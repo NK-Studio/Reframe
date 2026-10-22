@@ -15,14 +15,14 @@ ZIP="$ROOT/dist/Reframe-$VERSION-macos-$(uname -m).zip"
 cd "$ROOT"
 # 바이너리에 빌드 PC 경로(홈 폴더, 저장소 위치)가 남지 않게 바꿔 기록한다
 RUSTFLAGS="--remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$ROOT=/src --remap-path-prefix=$HOME=/home" cargo build --release
-if strings target/release/reframe | grep -q "$HOME"; then
+if strings target/release/Reframe | grep -q "$HOME"; then
     echo "오류: 바이너리에 홈 폴더 경로가 남아 있습니다" >&2
     exit 1
 fi
 
 rm -rf "$APP" "$ZIP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/ffmpeg"
-cp target/release/reframe "$APP/Contents/MacOS/"
+cp target/release/Reframe "$APP/Contents/MacOS/"
 cp "$FFMPEG_DIR"/{ffmpeg,ffprobe,BUILD_INFO.txt,LICENSE-ffmpeg.txt} "$APP/Contents/Resources/ffmpeg/"
 cp LICENSE THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/"
 cp ui/fonts/OFL.txt "$APP/Contents/Resources/LICENSE-IBMPlexSansKR.txt"
@@ -36,7 +36,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <key>CFBundleName</key><string>Reframe</string>
     <key>CFBundleDisplayName</key><string>Reframe</string>
     <key>CFBundleIdentifier</key><string>com.nkstudio.reframe</string>
-    <key>CFBundleExecutable</key><string>reframe</string>
+    <key>CFBundleExecutable</key><string>Reframe</string>
     <key>CFBundleIconFile</key><string>reframe</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleVersion</key><string>$VERSION</string>

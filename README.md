@@ -33,7 +33,7 @@ brew install cmake pkgconf
 ./scripts/package-macos.sh        # dist/Reframe.app, dist/Reframe-<버전>-macos-arm64.zip
 ```
 
-**Windows (x64)**: [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds)의 정적 GPL 빌드를 받아 `reframe.exe` 옆 `ffmpeg\` 폴더에 넣습니다.
+**Windows (x64)**: [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds)의 정적 GPL 빌드를 받아 `Reframe.exe` 옆 `ffmpeg\` 폴더에 넣습니다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1   # dist\Reframe-<버전>-windows-x64.zip

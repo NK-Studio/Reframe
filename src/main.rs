@@ -28,6 +28,8 @@ const FONTS: &[(&str, &[u8])] = &[
 ];
 /// 창 아이콘: 64×64 RGBA (scripts/make-icons.py 가 assets/icon/reframe-1024.png 에서 만든다)
 const WINDOW_ICON: &[u8] = include_bytes!("../assets/icon/window-64.rgba");
+/// 앱 정보 창의 "만든 사람" 링크
+const DEVELOPER_URL: &str = "https://github.com/NK-Studio";
 /// 앱 정보 창 로고
 const LOGO_PNG: &[u8] = include_bytes!("../assets/icon/reframe-256.png");
 /// ui/index.html 의 --bg (Radix gray-1, #111113)
@@ -42,10 +44,12 @@ enum UserEvent {
     Export(ExportRequest),
     Cancel,
     Reveal(PathBuf),
-    /// 앱 정보 창의 GitHub 링크: 기본 브라우저로 저장소 열기
-    OpenRepo,
+    /// 앱 정보 창의 "NK Studio" 링크: 기본 브라우저로 개발자 GitHub 열기
+    OpenDeveloper,
     /// 페이지가 window.onHost 를 준비함: 쌓아 둔 메시지를 보낸다
     Ready,
+    /// 영상 닫기 (홈으로): 열린 파일을 잊고, 진행 중인 분석 결과는 버린다
+    Close,
     /// JS 쪽 `window.onHost(msg)` 로 전달할 메시지
     ToJs(serde_json::Value),
 }
@@ -58,8 +62,9 @@ enum IpcMsg {
     Export(ExportRequest),
     Cancel,
     Reveal { path: PathBuf },
-    OpenRepo,
+    OpenDeveloper,
     Ready,
+    Close,
     /// 디버깅용: JS 로그를 터미널로
     Log { msg: String },
 }
@@ -72,6 +77,9 @@ struct ExportRequest {
     /// true 면 dir 아래 Output 폴더에 저장
     #[serde(default)]
     subfolder: bool,
+    /// 같은 이름의 파일이 있어도 덮어쓴다 (UI 에서 확인을 받은 뒤 다시 보낼 때 true)
+    #[serde(default)]
+    overwrite: bool,
     #[serde(flatten)]
     opts: ExportOptions,
 }
@@ -183,8 +191,9 @@ fn main() -> wry::Result<()> {
                 Ok(IpcMsg::Export(o)) => UserEvent::Export(o),
                 Ok(IpcMsg::Cancel) => UserEvent::Cancel,
                 Ok(IpcMsg::Reveal { path }) => UserEvent::Reveal(path),
-                Ok(IpcMsg::OpenRepo) => UserEvent::OpenRepo,
+                Ok(IpcMsg::OpenDeveloper) => UserEvent::OpenDeveloper,
                 Ok(IpcMsg::Ready) => UserEvent::Ready,
+                Ok(IpcMsg::Close) => UserEvent::Close,
                 Ok(IpcMsg::Log { msg }) => return eprintln!("[ui] {msg}"),
                 Err(e) => {
                     eprintln!("bad ipc: {e}: {}", req.body());
@@ -302,6 +311,16 @@ fn handle_event(
     match ev {
         UserEvent::ToJs(v) => to_js(page.push(v)),
         UserEvent::Ready => to_js(page.set_ready()),
+        UserEvent::Close => {
+            // 내보내는 중이면 닫지 않는다 (UI 도 막지만 한 번 더)
+            if job.lock().unwrap().is_some() {
+                return;
+            }
+            let mut cur = current.lock().unwrap();
+            cur.path = None;
+            cur.info = None;
+            cur.load_seq += 1;
+        }
         UserEvent::PickFile => {
             let picked = rfd::FileDialog::new()
                 .set_title("크롭할 영상 선택")
@@ -364,7 +383,7 @@ fn handle_event(
                 send(proxy, json!({"type": "folder", "path": dir}));
             }
         }
-        UserEvent::Export(ExportRequest { dir, name, subfolder, opts }) => {
+        UserEvent::Export(ExportRequest { dir, name, subfolder, overwrite, opts }) => {
             let (Some(ffmpeg), (Some(input), Some(info))) = (ffmpeg_bin.clone(), {
                 let c = current.lock().unwrap();
                 (c.path.clone(), c.info.clone())
@@ -381,16 +400,13 @@ fn handle_event(
             if output == input {
                 return send(proxy, json!({"type": "error", "message": "원본 파일에 덮어쓸 수 없습니다"}));
             }
-            if output.exists() {
-                let overwrite = rfd::MessageDialog::new()
-                    .set_level(rfd::MessageLevel::Warning)
-                    .set_title("파일이 이미 있습니다")
-                    .set_description(format!("{}\n\n덮어쓸까요?", output.display()))
-                    .set_buttons(rfd::MessageButtons::YesNo)
-                    .show();
-                if overwrite != rfd::MessageDialogResult::Yes {
-                    return;
-                }
+            // 이미 있으면 UI 에 확인을 요청한다. UI 가 덮어쓰기를 고르면 overwrite: true 로 다시 보낸다
+            if output.exists() && !overwrite {
+                return send(proxy, json!({
+                    "type": "confirmOverwrite",
+                    "path": output,
+                    "name": output.file_name().map(|n| n.to_string_lossy()),
+                }));
             }
 
             let args = ffmpeg::build_args(&input, &output, &opts, &info);
@@ -415,7 +431,7 @@ fn handle_event(
         }
         UserEvent::Cancel => ffmpeg::cancel(job),
         UserEvent::Reveal(path) => reveal(&path),
-        UserEvent::OpenRepo => open_url(env!("CARGO_PKG_REPOSITORY")),
+        UserEvent::OpenDeveloper => open_url(DEVELOPER_URL),
     }
 }
 
@@ -432,8 +448,13 @@ fn open_url(url: &str) {
 fn reveal(path: &std::path::Path) {
     #[cfg(target_os = "macos")]
     let _ = std::process::Command::new("open").arg("-R").arg(path).spawn();
+    // explorer 는 인자 전체가 따옴표로 감싸이면("/select,C:\a b.mp4") 해석하지 못해 엉뚱한 폴더를 연다.
+    // 공백이 든 경로도 되도록 경로 부분만 따옴표로 감싸 그대로 넘긴다
     #[cfg(windows)]
-    let _ = std::process::Command::new("explorer").arg(format!("/select,{}", path.display())).spawn();
+    let _ = {
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("explorer").raw_arg(format!("/select,\"{}\"", path.display())).spawn()
+    };
     #[cfg(not(any(target_os = "macos", windows)))]
     let _ = std::process::Command::new("xdg-open").arg(path.parent().unwrap_or(path)).spawn();
 }
@@ -464,10 +485,12 @@ mod tests {
         let Ok(IpcMsg::Export(req)) = serde_json::from_str::<IpcMsg>(msg) else { panic!("parse failed") };
         assert_eq!(req.name, "land_crop_608x1080");
         assert!(req.subfolder);
+        assert!(!req.overwrite);
         assert_eq!(req.opts.w, 608);
         assert_eq!(req.opts.format, Format::Mp4);
-        let msg = r#"{"cmd":"export","dir":"/tmp/out","name":"a","x":0,"y":0,"w":608,"h":1080,"format":"gif","codec":"x264","quality":75,"audio":"auto","gif_fps":12,"gif_width":480}"#;
+        let msg = r#"{"cmd":"export","dir":"/tmp/out","name":"a","x":0,"y":0,"w":608,"h":1080,"format":"gif","codec":"x264","quality":75,"audio":"auto","gif_fps":12,"gif_width":480,"overwrite":true}"#;
         let Ok(IpcMsg::Export(req)) = serde_json::from_str::<IpcMsg>(msg) else { panic!("parse failed") };
+        assert!(req.overwrite);
         assert_eq!(req.opts.format, Format::Gif);
         assert_eq!((req.opts.gif_fps, req.opts.gif_width), (12, Some(480)));
         let msg = r#"{"cmd":"pickFolder","current":null}"#;
@@ -495,6 +518,8 @@ mod tests {
         assert_eq!(page.set_ready(), vec![serde_json::json!(1), serde_json::json!(2)]);
         assert_eq!(page.push(serde_json::json!(3)), vec![serde_json::json!(3)]);
         assert!(matches!(serde_json::from_str::<IpcMsg>(r#"{"cmd":"ready"}"#), Ok(IpcMsg::Ready)));
+        assert!(matches!(serde_json::from_str::<IpcMsg>(r#"{"cmd":"close"}"#), Ok(IpcMsg::Close)));
+        assert!(matches!(serde_json::from_str::<IpcMsg>(r#"{"cmd":"openDeveloper"}"#), Ok(IpcMsg::OpenDeveloper)));
     }
 
     #[test]
