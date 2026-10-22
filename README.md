@@ -27,3 +27,7 @@ cargo run --release -- 영상.mp4  # 파일 바로 열기
 cargo test
 VC_TEST_DIR=<샘플 폴더(land.mp4, rot.mov, odd.avi)> cargo test -- --ignored --nocapture
 ```
+
+## 라이선스
+
+[GPL-3.0](LICENSE). FFmpeg 등 외부 소프트웨어의 라이선스는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)를 참고하세요.
