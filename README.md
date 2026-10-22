@@ -14,6 +14,13 @@ cargo run --release              # 또는
 cargo run --release -- 영상.mp4  # 파일 바로 열기
 ```
 
+**Windows**: 배포본과 같은 GPL 빌드 ffmpeg를 `target\debug\ffmpeg\`, `target\release\ffmpeg\`에 받아 둡니다. 시스템 ffmpeg가 LGPL 빌드(예: `--disable-libx264`)면 H.264/H.265 소프트웨어 코덱이 목록에서 빠지므로 이 방법을 권장합니다. `cargo clean` 후에는 다시 실행하세요.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\fetch-ffmpeg-windows.ps1
+cargo run --release
+```
+
 앱은 ffmpeg를 다음 순서로 찾습니다: 실행 파일 옆 `ffmpeg/` 폴더 → 실행 파일 옆 → `.app/Contents/Resources/ffmpeg/` → `PATH` → Homebrew 경로.
 
 ## 배포본 만들기 (ffmpeg 동봉)

@@ -1,4 +1,4 @@
-# ffmpeg 를 동봉한 Windows 배포본(zip)을 dist/ 에 만든다. (Windows x64, PowerShell)
+﻿# ffmpeg 를 동봉한 Windows 배포본(zip)을 dist/ 에 만든다. (Windows x64, PowerShell)
 #
 # FFmpeg 는 BtbN/FFmpeg-Builds 의 정적 GPL 빌드를 받아 쓴다.
 #   https://github.com/BtbN/FFmpeg-Builds
