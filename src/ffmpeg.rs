@@ -8,6 +8,20 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// ffmpeg/ffprobe 실행 명령. 릴리스 빌드는 콘솔 없는 GUI 앱이라
+/// Windows 에서는 그냥 실행하면 자식 프로세스마다 콘솔 창이 잠깐 떴다 사라지므로 막는다.
+fn tool_cmd(exe: &Path) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(exe);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 /// 앱과 함께 배포한 ffmpeg 를 먼저 찾고, 없으면 시스템에 설치된 것을 쓴다.
 /// Finder 등에서 실행하면 셸 PATH(Homebrew 경로)가 없으므로 흔한 설치 경로도 함께 찾는다.
 pub fn find_tool(name: &str) -> Option<PathBuf> {
@@ -44,7 +58,7 @@ pub fn is_bundled(path: &Path) -> bool {
 
 /// 이 ffmpeg 에서 쓸 수 있는 인코더를 UI 코덱 키("x264" 등)로 돌려준다.
 pub fn available_encoders(ffmpeg: &Path) -> Vec<&'static str> {
-    let out = Command::new(ffmpeg).args(["-hide_banner", "-encoders"]).output();
+    let out = tool_cmd(ffmpeg).args(["-hide_banner", "-encoders"]).output();
     let list = out.map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
     let has = |enc: &str| list.lines().any(|l| l.split_whitespace().nth(1) == Some(enc));
     [
@@ -71,10 +85,12 @@ pub struct ProbeInfo {
     pub fps: f64,
     pub video_codec: String,
     pub audio_codec: Option<String>,
+    /// 파일 크기 (바이트)
+    pub size: u64,
 }
 
 pub fn probe(ffprobe: &Path, input: &Path) -> Result<ProbeInfo, String> {
-    let out = Command::new(ffprobe)
+    let out = tool_cmd(ffprobe)
         .args(["-v", "error", "-print_format", "json", "-show_streams", "-show_format"])
         .arg(input)
         .output()
@@ -128,12 +144,13 @@ pub fn probe(ffprobe: &Path, input: &Path) -> Result<ProbeInfo, String> {
         fps,
         video_codec: video["codec_name"].as_str().unwrap_or("?").to_string(),
         audio_codec: audio.and_then(|a| a["codec_name"].as_str()).map(str::to_string),
+        size: std::fs::metadata(input).map(|m| m.len()).unwrap_or(0),
     })
 }
 
 /// 미리보기용 단일 프레임(JPEG). WebView 가 재생 못 하는 코덱(mkv, avi 등)일 때 사용.
 pub fn frame_jpeg(ffmpeg: &Path, input: &Path, t: f64) -> Result<Vec<u8>, String> {
-    let mut child = Command::new(ffmpeg)
+    let mut child = tool_cmd(ffmpeg)
         .args(["-v", "error", "-ss", &format!("{t:.3}")])
         .arg("-i")
         .arg(input)
@@ -154,8 +171,6 @@ pub struct ExportOptions {
     pub y: u32,
     pub w: u32,
     pub h: u32,
-    /// 출력 가로 크기 (None 이면 크롭 크기 그대로)
-    pub out_width: Option<u32>,
     /// "x264" | "x265" | "vt264" | "vt265" | "av1"
     pub codec: String,
     /// 0~100, 높을수록 고화질
@@ -174,12 +189,7 @@ pub fn build_args(input: &Path, output: &Path, o: &ExportOptions, info: &ProbeIn
     let h = even(o.h.min(info.height));
     let x = o.x.min(info.width - w);
     let y = o.y.min(info.height - h);
-    let mut vf = format!("crop={w}:{h}:{x}:{y}");
-    if let Some(ow) = o.out_width.filter(|&ow| ow > 0 && ow != w) {
-        let oh = even((ow as f64 * h as f64 / w as f64).round() as u32);
-        vf += &format!(",scale={}:{oh}:flags=lanczos", even(ow));
-    }
-    vf += ",setsar=1";
+    let vf = format!("crop={w}:{h}:{x}:{y},setsar=1");
 
     let q = o.quality.min(100) as f64;
     let mut a: Vec<String> = ["-y", "-hide_banner", "-nostats", "-progress", "pipe:1", "-i"]
@@ -223,7 +233,7 @@ pub fn run_export(
     job: Job,
     mut on_progress: impl FnMut(f64),
 ) -> Result<(), String> {
-    let mut child = Command::new(ffmpeg)
+    let mut child = tool_cmd(ffmpeg)
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -276,9 +286,9 @@ mod tests {
     fn av1_args() {
         let info = ProbeInfo {
             width: 1920, height: 1080, rotation: 0, duration: 1.0, fps: 30.0,
-            video_codec: "h264".into(), audio_codec: Some("aac".into()),
+            video_codec: "h264".into(), audio_codec: Some("aac".into()), size: 0,
         };
-        let o = ExportOptions { x: 0, y: 0, w: 608, h: 1080, out_width: None, codec: "av1".into(), quality: 75, audio: "auto".into() };
+        let o = ExportOptions { x: 0, y: 0, w: 608, h: 1080, codec: "av1".into(), quality: 75, audio: "auto".into() };
         let args = build_args(Path::new("in.mp4"), Path::new("out.mp4"), &o, &info).join(" ");
         assert!(args.contains("-c:v libsvtav1 -preset 8 -crf 28"), "{args}");
         assert!(!args.contains("hvc1"));
@@ -298,7 +308,7 @@ mod tests {
             // 9:16 크롭, 홀수 크기 입력 → 짝수로 보정되는지
             let h = info.height;
             let w = h * 9 / 16 + 1;
-            let o = ExportOptions { x: 101, y: 0, w, h, out_width: Some(541), codec: codec.into(), quality: 70, audio: "auto".into() };
+            let o = ExportOptions { x: 101, y: 0, w, h, codec: codec.into(), quality: 70, audio: "auto".into() };
             let out = dir.join(format!("out_{name}.mp4"));
             let args = build_args(&input, &out, &o, &info);
             let mut last = 0.0;

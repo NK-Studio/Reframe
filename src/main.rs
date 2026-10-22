@@ -20,6 +20,8 @@ use wry::{DragDropEvent, WebViewBuilder};
 use ffmpeg::{ExportOptions, ProbeInfo};
 
 const INDEX_HTML: &str = include_str!("../ui/index.html");
+/// ui/index.html 의 --bg (#16171a)
+const BG_COLOR: (u8, u8, u8, u8) = (0x16, 0x17, 0x1a, 0xff);
 
 /// 다른 스레드/IPC 에서 메인 이벤트 루프로 보내는 이벤트
 enum UserEvent {
@@ -51,8 +53,21 @@ enum IpcMsg {
 struct ExportRequest {
     dir: PathBuf,
     name: String,
+    /// true 면 dir 아래 Output 폴더에 저장
+    #[serde(default)]
+    subfolder: bool,
     #[serde(flatten)]
     opts: ExportOptions,
+}
+
+/// 저장 폴더 아래 Output 폴더를 쓴다. 없으면 만든다.
+fn output_subdir(dir: &std::path::Path) -> Result<PathBuf, String> {
+    if !dir.is_dir() {
+        return Err(format!("저장 폴더가 없습니다: {}", dir.display()));
+    }
+    let sub = dir.join("Output");
+    std::fs::create_dir_all(&sub).map_err(|e| format!("Output 폴더를 만들 수 없습니다: {e}"))?;
+    Ok(sub)
 }
 
 /// 폴더 + 이름으로 출력 경로를 만든다. 확장자는 항상 .mp4
@@ -78,6 +93,8 @@ fn output_path(dir: &std::path::Path, name: &str) -> Result<PathBuf, String> {
 struct Current {
     path: Option<PathBuf>,
     info: Option<ProbeInfo>,
+    /// 열기 요청 번호. 분석 중 다른 파일을 열면 앞선 결과는 버린다.
+    load_seq: u64,
 }
 
 /// custom protocol 의 기준 URL (Windows/Android 는 http://<scheme>.localhost 형식)
@@ -100,6 +117,8 @@ fn main() -> wry::Result<()> {
         .with_title("Video Crop")
         .with_inner_size(LogicalSize::new(1280.0, 820.0))
         .with_min_inner_size(LogicalSize::new(900.0, 600.0))
+        // 페이지가 그려지기 전 흰 화면이 번쩍이지 않게 UI 배경색(--bg)과 맞춘다
+        .with_background_color(BG_COLOR)
         .build(&event_loop)
         .expect("window");
 
@@ -150,6 +169,7 @@ fn main() -> wry::Result<()> {
             }
             true // WebView 기본 동작(파일을 페이지로 여는 것) 막기
         })
+        .with_background_color(BG_COLOR)
         .with_devtools(cfg!(debug_assertions))
         .with_url(scheme_url("app"));
 
@@ -166,11 +186,16 @@ fn main() -> wry::Result<()> {
         Some(ffmpeg) if ffprobe_bin.is_some() => {
             let bundled = ffmpeg::is_bundled(ffmpeg);
             eprintln!("ffmpeg: {} ({})", ffmpeg.display(), if bundled { "bundled" } else { "system" });
-            let _ = proxy.send_event(UserEvent::ToJs(json!({
-                "type": "tools",
-                "bundled": bundled,
-                "encoders": ffmpeg::available_encoders(ffmpeg),
-            })));
+            // 인코더 목록 조회(ffmpeg 실행)는 첫 실행 때 백신 검사 등으로 오래 걸릴 수 있어 창을 막지 않게 따로 돌린다
+            let ffmpeg = ffmpeg.clone();
+            let proxy = proxy.clone();
+            std::thread::spawn(move || {
+                send(&proxy, json!({
+                    "type": "tools",
+                    "bundled": bundled,
+                    "encoders": ffmpeg::available_encoders(&ffmpeg),
+                }));
+            });
         }
         _ => {
             let _ = proxy.send_event(UserEvent::ToJs(json!({
@@ -225,32 +250,47 @@ fn handle_event(
             }
         }
         UserEvent::Load(path) => {
-            let Some(ffprobe) = ffprobe_bin else {
+            let Some(ffprobe) = ffprobe_bin.clone() else {
                 return send(proxy, json!({"type": "error", "message": "ffprobe 가 없습니다"}));
             };
-            match ffmpeg::probe(ffprobe, &path) {
-                Ok(info) => {
-                    let mut cur = current.lock().unwrap();
-                    cur.path = Some(path.clone());
-                    cur.info = Some(info.clone());
-                    // 같은 URL 이면 WebView 가 캐시를 쓰므로 파일마다 다른 쿼리를 붙인다
-                    let nonce = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_millis())
-                        .unwrap_or(0);
-                    send(proxy, json!({
-                        "type": "loaded",
-                        "path": path,
-                        "name": path.file_name().map(|n| n.to_string_lossy()),
-                        "stem": path.file_stem().map(|n| n.to_string_lossy()),
-                        "dir": path.parent(),
-                        "videoUrl": format!("{}video?n={nonce}", scheme_url("media")),
-                        "frameUrl": format!("{}frame?n={nonce}", scheme_url("media")),
-                        "info": info,
-                    }));
+            // 분석(ffprobe)은 별도 스레드에서: 이벤트 루프를 막으면 창 전체가 멈춘다
+            send(proxy, json!({"type": "loading", "name": path.file_name().map(|n| n.to_string_lossy())}));
+            let seq = {
+                let mut cur = current.lock().unwrap();
+                cur.load_seq += 1;
+                cur.load_seq
+            };
+            let proxy = proxy.clone();
+            let current = current.clone();
+            std::thread::spawn(move || {
+                let res = ffmpeg::probe(&ffprobe, &path);
+                let mut cur = current.lock().unwrap();
+                if cur.load_seq != seq {
+                    return;
                 }
-                Err(e) => send(proxy, json!({"type": "error", "message": format!("파일을 읽을 수 없습니다: {e}")})),
-            }
+                match res {
+                    Ok(info) => {
+                        cur.path = Some(path.clone());
+                        cur.info = Some(info.clone());
+                        // 같은 URL 이면 WebView 가 캐시를 쓰므로 파일마다 다른 쿼리를 붙인다
+                        let nonce = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis())
+                            .unwrap_or(0);
+                        send(&proxy, json!({
+                            "type": "loaded",
+                            "path": path,
+                            "name": path.file_name().map(|n| n.to_string_lossy()),
+                            "stem": path.file_stem().map(|n| n.to_string_lossy()),
+                            "dir": path.parent(),
+                            "videoUrl": format!("{}video?n={nonce}", scheme_url("media")),
+                            "frameUrl": format!("{}frame?n={nonce}", scheme_url("media")),
+                            "info": info,
+                        }));
+                    }
+                    Err(e) => send(&proxy, json!({"type": "loadFailed", "message": format!("파일을 읽을 수 없습니다: {e}")})),
+                }
+            });
         }
         UserEvent::PickFolder(current) => {
             let mut dialog = rfd::FileDialog::new().set_title("저장할 폴더 선택");
@@ -261,7 +301,7 @@ fn handle_event(
                 send(proxy, json!({"type": "folder", "path": dir}));
             }
         }
-        UserEvent::Export(ExportRequest { dir, name, opts }) => {
+        UserEvent::Export(ExportRequest { dir, name, subfolder, opts }) => {
             let (Some(ffmpeg), (Some(input), Some(info))) = (ffmpeg_bin.clone(), {
                 let c = current.lock().unwrap();
                 (c.path.clone(), c.info.clone())
@@ -271,7 +311,7 @@ fn handle_event(
             if job.lock().unwrap().is_some() {
                 return;
             }
-            let output = match output_path(&dir, &name) {
+            let output = match (if subfolder { output_subdir(&dir) } else { Ok(dir) }).and_then(|d| output_path(&d, &name)) {
                 Ok(p) => p,
                 Err(e) => return send(proxy, json!({"type": "error", "message": e})),
             };
@@ -340,14 +380,15 @@ fn shell_join(args: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{output_path, IpcMsg};
+    use super::{output_path, output_subdir, IpcMsg};
 
     #[test]
     fn parse_export_msg() {
         // UI 가 실제로 보내는 메시지 그대로
-        let msg = r#"{"cmd":"export","dir":"/tmp/out","name":"land_crop_608x1080","x":656,"y":0,"w":608,"h":1080,"out_width":null,"codec":"x264","quality":75,"audio":"auto"}"#;
+        let msg = r#"{"cmd":"export","dir":"/tmp/out","name":"land_crop_608x1080","subfolder":true,"x":656,"y":0,"w":608,"h":1080,"codec":"x264","quality":75,"audio":"auto"}"#;
         let Ok(IpcMsg::Export(req)) = serde_json::from_str::<IpcMsg>(msg) else { panic!("parse failed") };
         assert_eq!(req.name, "land_crop_608x1080");
+        assert!(req.subfolder);
         assert_eq!(req.opts.w, 608);
         let msg = r#"{"cmd":"pickFolder","current":null}"#;
         assert!(matches!(serde_json::from_str::<IpcMsg>(msg), Ok(IpcMsg::PickFolder { current: None })));
@@ -362,5 +403,19 @@ mod tests {
         assert!(output_path(&dir, ".mp4").is_err());
         assert!(output_path(&dir, "a/b").is_err());
         assert!(output_path(&dir.join("no-such-dir-xyz"), "a").is_err());
+    }
+
+    #[test]
+    fn output_subdir_created() {
+        let dir = std::env::temp_dir().join(format!("vc-subdir-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // 없으면 만들고, 이미 있으면 그대로 쓴다
+        assert_eq!(output_subdir(&dir).unwrap(), dir.join("Output"));
+        assert!(dir.join("Output").is_dir());
+        assert_eq!(output_subdir(&dir).unwrap(), dir.join("Output"));
+        // 저장 폴더 자체가 없으면 만들지 않는다
+        assert!(output_subdir(&dir.join("no-such-dir")).is_err());
+        assert!(!dir.join("no-such-dir").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

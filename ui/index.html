@@ -22,6 +22,9 @@
   input[type=number], input[type=text], select {
     background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; width: 100%; user-select: text; -webkit-user-select: text; }
   input:focus, select:focus { outline: none; border-color: var(--accent); }
+  /* 스피너 화살표 숨김: 값은 키보드 ↑↓ · 라벨 드래그로 조절 */
+  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+  input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
   .app { display: grid; grid-template-columns: 1fr 300px; height: 100%; }
   .main { display: flex; flex-direction: column; min-width: 0; }
@@ -31,6 +34,14 @@
   .empty { text-align: center; color: var(--muted); border: 2px dashed var(--line); border-radius: 14px; padding: 48px 64px; }
   .empty b { display: block; color: var(--text); font-size: 16px; margin-bottom: 6px; }
   .stage.drag .empty { border-color: var(--accent); color: var(--text); }
+  /* 영상 불러오는 중 표시: 빨리 끝나면 깜빡이지 않도록 살짝 늦게 나타난다 */
+  .loading { position: absolute; inset: 0; z-index: 5; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    background: rgba(0, 0, 0, .45); color: var(--text); font-size: 13px; opacity: 0; animation: vc-fade .15s .12s forwards; }
+  .stage.is-loading .loading { display: flex; }
+  .stage.is-loading .empty { visibility: hidden; }
+  .loading .spin { width: 28px; height: 28px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: vc-spin .8s linear infinite; }
+  @keyframes vc-fade { to { opacity: 1; } }
+  @keyframes vc-spin { to { transform: rotate(360deg); } }
 
   .frame { position: relative; background: black; display: none; }
   .clip { position: absolute; inset: 0; overflow: hidden; }
@@ -84,6 +95,8 @@
   .custom { margin-top: 8px; display: none; }
   .custom.on { display: flex; }
   .muted { color: var(--muted); font-size: 12px; }
+  .check { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--muted); font-size: 12px; cursor: pointer; }
+  .check input { margin: 0; accent-color: var(--accent); }
   .info { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; }
   .info span:nth-child(odd) { color: var(--muted); }
   .seg { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
@@ -110,6 +123,7 @@
       <span class="name" id="fileName">파일을 열거나 창에 끌어다 놓으세요</span>
     </div>
     <div class="stage" id="stage">
+      <div class="loading" id="loading"><div class="spin"></div><span id="loadingName"></span></div>
       <div class="empty" id="empty"><b>영상 파일을 여기에 드롭</b>또는 [영상 열기…] 클릭<br><br>MP4 · MOV · MKV · WEBM · AVI …</div>
       <div class="frame" id="frame">
         <div class="clip">
@@ -173,20 +187,15 @@
         <button id="centerBtn" style="flex:1">가운데 정렬</button>
         <button id="maxBtn" style="flex:1">최대 크기</button>
       </div>
-      <p class="muted" style="margin:8px 0 0">드래그로 이동 · 모서리로 크기 조절<br>방향키 1px · Shift+방향키 10px 이동<br>숫자 칸: 입력 즉시 반영 · ↑↓ · 라벨 드래그</p>
       </div>
     </details>
 
     <details class="sec" data-sec="output">
-      <summary><span class="t">출력</span><span class="sum" id="sum-output"></span></summary>
+      <summary><span class="t">비디오</span><span class="sum" id="sum-output"></span></summary>
       <div class="body">
       <div class="row">
-        <label>출력 가로 (비우면 크롭 크기 그대로)<input type="number" id="outW" min="2" placeholder="예: 1080"></label>
-      </div>
-      <p class="muted" id="outSize" style="margin:6px 0 0"></p>
-      <div class="row" style="margin-top:10px">
         <label>코덱
-          <select id="codec">
+          <select id="codec" disabled>
             <optgroup label="하드웨어 — 빠름">
               <option value="vt264">H.264 — 호환성 최고</option>
               <option value="vt265">H.265 — 용량 작음</option>
@@ -203,8 +212,13 @@
         <div class="row muted"><span style="flex:1">화질</span><span id="qv"></span></div>
         <input type="range" class="q" id="quality" min="0" max="100" value="75">
       </div>
-      <div style="margin-top:10px">
-        <div class="muted" style="margin-bottom:4px">오디오</div>
+      </div>
+    </details>
+
+    <details class="sec" data-sec="audio">
+      <summary><span class="t">오디오</span><span class="sum" id="sum-audio"></span></summary>
+      <div class="body">
+      <div>
         <div class="seg" id="audio">
           <button data-v="auto" class="on" title="mp4 호환이면 그대로 복사, 아니면 AAC">자동</button>
           <button data-v="copy">복사</button>
@@ -229,6 +243,7 @@
             <div class="row"><div class="path" id="outDir" title="">—</div><button id="dirBtn" disabled>변경…</button></div>
           </label>
         </div>
+        <label class="check" title="저장 위치 아래 Output 폴더에 저장합니다. 폴더가 없으면 만듭니다."><input type="checkbox" id="useSub">Output 폴더에 저장</label>
         <p class="muted" id="sameWarn" style="display:none;margin:6px 0 0;color:#f0b04f">원본과 같은 파일입니다. 저장 위치나 이름을 바꿔주세요.</p>
         </div>
       </details>
@@ -359,7 +374,7 @@ function render() {
   for (const [id, k] of [['cx', 'x'], ['cy', 'y'], ['cw', 'w'], ['ch', 'h']]) {
     if (document.activeElement !== $(id)) $(id).value = ri[k];
   }
-  updateOutSize();
+  updateSummaries();
 }
 
 // 내보낼 때와 같은 규칙으로 정수/짝수화
@@ -371,16 +386,13 @@ function rounded() {
   return { x: Math.max(0, x), y: Math.max(0, y), w, h };
 }
 
-function updateOutSize() {
-  const r = rounded();
-  const ow = +$('outW').value;
-  if (ow > 0 && ow !== r.w) {
-    const e = (v) => Math.max(2, Math.floor(v / 2) * 2);
-    $('outSize').textContent = `최종 출력: ${e(ow)} × ${e(Math.round(ow * r.h / r.w))} (리사이즈)`;
-  } else {
-    $('outSize').textContent = `최종 출력: ${r.w} × ${r.h}`;
-  }
-  updateSummaries();
+// 바이트 → "12.3 MB" (1024 단위)
+function fmtSize(b) {
+  if (!b) return '—';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(u.length - 1, Math.floor(Math.log(b) / Math.log(1024)));
+  const v = b / 1024 ** i;
+  return `${i === 0 ? v : v.toFixed(v < 10 ? 2 : 1)} ${u[i]}`;
 }
 
 // ---- 접힌 섹션에 보여줄 한 줄 요약 ----
@@ -391,9 +403,10 @@ function updateSummaries() {
   if (!st.info) return;
   const r = rounded();
   $('sum-crop').textContent = `${r.w} × ${r.h}`;
-  $('sum-output').textContent = `${$('outSize').textContent.replace('최종 출력: ', '').replace(' (리사이즈)', '')} · ${CODEC_SHORT[$('codec').value] ?? ''}`;
-  $('sum-info').textContent = `${st.info.width} × ${st.info.height} · ${Math.round(st.info.fps)}fps`;
-  $('sum-save').textContent = `${$('outName').value}.mp4`;
+  $('sum-output').textContent = `${CODEC_SHORT[$('codec').value] ?? ''} · 화질 ${$('quality').value}`;
+  $('sum-audio').textContent = document.querySelector('#audio button.on')?.textContent ?? '';
+  $('sum-info').textContent = `${st.info.width} × ${st.info.height} · ${Math.round(st.info.fps)}fps · ${fmtSize(st.info.size)}`;
+  $('sum-save').textContent = `${$('useSub').checked ? 'Output/' : ''}${$('outName').value}.mp4`;
 }
 
 // 섹션 열림/닫힘 상태 기억 (브라우저 저장소를 못 쓰면 기본값으로)
@@ -547,12 +560,12 @@ $('maxBtn').onclick = () => { if (!st.info) return;
   if (ratio()) applyRatio(true); else { st.crop = { x: 0, y: 0, w: st.info.width, h: st.info.height }; render(); } };
 for (const id of ['customA', 'customB']) $(id).addEventListener('input', () => st.info && applyRatio());
 $('swapBtn').onclick = () => { const a = $('customA').value; $('customA').value = $('customB').value; $('customB').value = a; st.info && applyRatio(); };
-$('outW').addEventListener('input', updateOutSize);
-$('quality').addEventListener('input', () => $('qv').textContent = $('quality').value);
+$('quality').addEventListener('input', () => { $('qv').textContent = $('quality').value; updateSummaries(); });
 $('qv').textContent = $('quality').value;
 document.querySelectorAll('#audio button').forEach(b => b.onclick = () => {
   st.audio = b.dataset.v;
   document.querySelectorAll('#audio button').forEach(x => x.classList.toggle('on', x === b));
+  updateSummaries();
 });
 
 // ---- 재생 / 탐색 ----
@@ -602,6 +615,20 @@ window.addEventListener('dragover', (e) => { e.preventDefault(); $('stage').clas
 window.addEventListener('dragleave', () => $('stage').classList.remove('drag'));
 window.addEventListener('drop', (e) => { e.preventDefault(); $('stage').classList.remove('drag'); });
 
+// 열기 요청부터 첫 프레임이 보일 때까지 로딩 표시 (응답이 없어도 10초 뒤엔 걷는다)
+let loadingTimer;
+function setLoading(on, name) {
+  clearTimeout(loadingTimer);
+  if (on) {
+    $('loadingName').textContent = name ? `불러오는 중… ${name}` : '불러오는 중…';
+    loadingTimer = setTimeout(() => setLoading(false), 10000);
+  }
+  $('stage').classList.toggle('is-loading', on);
+}
+video.addEventListener('loadeddata', () => setLoading(false));
+$('still').addEventListener('load', () => setLoading(false));
+$('still').addEventListener('error', () => setLoading(false));
+
 function onLoaded(m) {
   st.info = m.info;
   st.frameUrl = m.frameUrl;
@@ -635,6 +662,7 @@ function onLoaded(m) {
     ['FPS', i.fps.toFixed(2)],
     ['비디오', i.videoCodec],
     ['오디오', i.audioCodec || '없음'],
+    ['용량', fmtSize(i.size)],
   ].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
   st.crop = { x: 0, y: 0, w: i.width, h: i.height };
   layout();
@@ -645,10 +673,22 @@ function onLoaded(m) {
 // ---- 내보내기 ----
 // .path 는 앞쪽을 말줄임하려고 direction:rtl 을 쓰므로, LRM 으로 감싸 슬래시가 뒤로 튀지 않게 한다
 function setDir(d) { st.outDir = d; $('outDir').textContent = '\u200E' + d + '\u200E'; $('outDir').title = d; checkSame(); }
+// 실제로 저장될 폴더 (Output 폴더 옵션 반영, 경로 구분자는 원래 경로를 따른다)
+function exportDir() {
+  if (!$('useSub').checked) return st.outDir;
+  const sep = st.outDir.includes('\\') ? '\\' : '/';
+  return st.outDir.replace(/[\\/]+$/, '') + sep + 'Output';
+}
+// Output 폴더 옵션은 다음 실행에도 유지 (브라우저 저장소를 못 쓰면 꺼진 상태로)
+try { $('useSub').checked = localStorage.getItem('vc.useSub') === '1'; } catch {}
+$('useSub').addEventListener('change', () => {
+  try { localStorage.setItem('vc.useSub', $('useSub').checked ? '1' : '0'); } catch {}
+  checkSame(); updateSummaries();
+});
 // 저장 경로가 원본 파일 자체를 가리키면 경고 + 내보내기 막기
 function checkSame() {
   const name = $('outName').value.trim().replace(/\.mp4$/i, '');
-  const same = !!st.info && st.srcIsMp4 && st.outDir === st.srcDir && name === st.stem;
+  const same = !!st.info && st.srcIsMp4 && exportDir() === st.srcDir && name === st.stem;
   $('sameWarn').style.display = same ? '' : 'none';
   $('exportBtn').disabled = st.exporting || !st.info || same;
 }
@@ -658,11 +698,10 @@ $('outName').addEventListener('blur', () => { if (!$('outName').value.trim()) { 
 $('dirBtn').onclick = () => post({ cmd: 'pickFolder', current: st.outDir });
 $('exportBtn').onclick = () => {
   const r = rounded();
-  const ow = +$('outW').value;
   const name = $('outName').value.trim();
   if (!name) return toast('파일 이름을 입력하세요');
   if (/[\\/:]/.test(name)) return toast('파일 이름에 / \\ : 는 쓸 수 없습니다');
-  post({ cmd: 'export', dir: st.outDir, name, ...r, out_width: ow > 0 ? ow : null, codec: $('codec').value, quality: +$('quality').value, audio: st.audio });
+  post({ cmd: 'export', dir: st.outDir, name, subfolder: $('useSub').checked, ...r, codec: $('codec').value, quality: +$('quality').value, audio: st.audio });
 };
 $('cancelBtn').onclick = () => post({ cmd: 'cancel' });
 $('status').addEventListener('click', () => { if (st.lastOutput) post({ cmd: 'reveal', path: st.lastOutput }); });
@@ -673,6 +712,7 @@ function setExporting(on) {
   if (!on) checkSame();
   $('openBtn').disabled = on;
   $('dirBtn').disabled = on;
+  $('useSub').disabled = on;
   $('outName').disabled = on;
   $('cancelBtn').style.display = on ? '' : 'none';
   $('bar').style.display = on ? 'block' : $('bar').style.display;
@@ -692,12 +732,15 @@ function setEncoders(list) {
   for (const o of sel.options) o.hidden = o.disabled = !list.includes(o.value);
   for (const g of sel.querySelectorAll('optgroup')) g.hidden = [...g.children].every(o => o.hidden);
   sel.value = list[0] ?? '';
+  sel.disabled = !list.length;
   updateSummaries();
 }
 
 window.onHost = (m) => {
   switch (m.type) {
+    case 'loading': setLoading(true, m.name); break;
     case 'loaded': onLoaded(m); break;
+    case 'loadFailed': setLoading(false); toast(m.message); break;
     case 'error': toast(m.message); break;
     case 'folder': setDir(m.path); break;
     case 'tools': setEncoders(m.encoders); break;
