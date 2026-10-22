@@ -70,11 +70,12 @@ fn output_subdir(dir: &std::path::Path) -> Result<PathBuf, String> {
     Ok(sub)
 }
 
-/// 폴더 + 이름으로 출력 경로를 만든다. 확장자는 항상 .mp4
-fn output_path(dir: &std::path::Path, name: &str) -> Result<PathBuf, String> {
+/// 폴더 + 이름으로 출력 경로를 만든다. 확장자는 형식(ext)을 따른다
+fn output_path(dir: &std::path::Path, name: &str, ext: &str) -> Result<PathBuf, String> {
     let name = name.trim();
-    let stem = match name.len().checked_sub(4) {
-        Some(i) if name.is_char_boundary(i) && name[i..].eq_ignore_ascii_case(".mp4") => &name[..i],
+    let suffix = format!(".{ext}");
+    let stem = match name.len().checked_sub(suffix.len()) {
+        Some(i) if name.is_char_boundary(i) && name[i..].eq_ignore_ascii_case(&suffix) => &name[..i],
         _ => name,
     };
     if stem.is_empty() {
@@ -86,7 +87,7 @@ fn output_path(dir: &std::path::Path, name: &str) -> Result<PathBuf, String> {
     if !dir.is_dir() {
         return Err(format!("저장 폴더가 없습니다: {}", dir.display()));
     }
-    Ok(dir.join(format!("{stem}.mp4")))
+    Ok(dir.join(format!("{stem}.{ext}")))
 }
 
 #[derive(Default)]
@@ -311,7 +312,7 @@ fn handle_event(
             if job.lock().unwrap().is_some() {
                 return;
             }
-            let output = match (if subfolder { output_subdir(&dir) } else { Ok(dir) }).and_then(|d| output_path(&d, &name)) {
+            let output = match (if subfolder { output_subdir(&dir) } else { Ok(dir) }).and_then(|d| output_path(&d, &name, opts.format.ext())) {
                 Ok(p) => p,
                 Err(e) => return send(proxy, json!({"type": "error", "message": e})),
             };
@@ -381,6 +382,7 @@ fn shell_join(args: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{output_path, output_subdir, IpcMsg};
+    use crate::ffmpeg::Format;
 
     #[test]
     fn parse_export_msg() {
@@ -390,6 +392,11 @@ mod tests {
         assert_eq!(req.name, "land_crop_608x1080");
         assert!(req.subfolder);
         assert_eq!(req.opts.w, 608);
+        assert_eq!(req.opts.format, Format::Mp4);
+        let msg = r#"{"cmd":"export","dir":"/tmp/out","name":"a","x":0,"y":0,"w":608,"h":1080,"format":"gif","codec":"x264","quality":75,"audio":"auto","gif_fps":12,"gif_width":480}"#;
+        let Ok(IpcMsg::Export(req)) = serde_json::from_str::<IpcMsg>(msg) else { panic!("parse failed") };
+        assert_eq!(req.opts.format, Format::Gif);
+        assert_eq!((req.opts.gif_fps, req.opts.gif_width), (12, Some(480)));
         let msg = r#"{"cmd":"pickFolder","current":null}"#;
         assert!(matches!(serde_json::from_str::<IpcMsg>(msg), Ok(IpcMsg::PickFolder { current: None })));
     }
@@ -397,12 +404,14 @@ mod tests {
     #[test]
     fn output_names() {
         let dir = std::env::temp_dir();
-        assert_eq!(output_path(&dir, "a_crop").unwrap(), dir.join("a_crop.mp4"));
-        assert_eq!(output_path(&dir, " 영상.MP4 ").unwrap(), dir.join("영상.mp4"));
-        assert_eq!(output_path(&dir, "로그인").unwrap(), dir.join("로그인.mp4"));
-        assert!(output_path(&dir, ".mp4").is_err());
-        assert!(output_path(&dir, "a/b").is_err());
-        assert!(output_path(&dir.join("no-such-dir-xyz"), "a").is_err());
+        assert_eq!(output_path(&dir, "a_crop", "mp4").unwrap(), dir.join("a_crop.mp4"));
+        assert_eq!(output_path(&dir, " 영상.MP4 ", "mp4").unwrap(), dir.join("영상.mp4"));
+        assert_eq!(output_path(&dir, "로그인", "mp4").unwrap(), dir.join("로그인.mp4"));
+        assert_eq!(output_path(&dir, "움짤.GIF", "gif").unwrap(), dir.join("움짤.gif"));
+        assert_eq!(output_path(&dir, "a.mp4", "gif").unwrap(), dir.join("a.mp4.gif"));
+        assert!(output_path(&dir, ".mp4", "mp4").is_err());
+        assert!(output_path(&dir, "a/b", "mp4").is_err());
+        assert!(output_path(&dir.join("no-such-dir-xyz"), "a", "mp4").is_err());
     }
 
     #[test]

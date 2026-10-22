@@ -165,18 +165,48 @@ pub fn frame_jpeg(ffmpeg: &Path, input: &Path, t: f64) -> Result<Vec<u8>, String
     if buf.is_empty() { Err("프레임 추출 실패".into()) } else { Ok(buf) }
 }
 
+/// 출력 형식
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Format {
+    #[default]
+    Mp4,
+    Gif,
+}
+
+impl Format {
+    pub fn ext(self) -> &'static str {
+        match self {
+            Format::Mp4 => "mp4",
+            Format::Gif => "gif",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ExportOptions {
     pub x: u32,
     pub y: u32,
     pub w: u32,
     pub h: u32,
-    /// "x264" | "x265" | "vt264" | "vt265" | "av1"
+    #[serde(default)]
+    pub format: Format,
+    /// MP4: "x264" | "x265" | "vt264" | "vt265" | "av1"
     pub codec: String,
-    /// 0~100, 높을수록 고화질
+    /// MP4: 0~100, 높을수록 고화질
     pub quality: u32,
-    /// "auto" | "copy" | "aac" | "none"
+    /// MP4: "auto" | "copy" | "aac" | "none"
     pub audio: String,
+    /// GIF: 초당 프레임 수
+    #[serde(default = "default_gif_fps")]
+    pub gif_fps: u32,
+    /// GIF: 가로 크기 (None 이면 크롭 크기 그대로)
+    #[serde(default)]
+    pub gif_width: Option<u32>,
+}
+
+fn default_gif_fps() -> u32 {
+    15
 }
 
 fn even(v: u32) -> u32 {
@@ -189,15 +219,30 @@ pub fn build_args(input: &Path, output: &Path, o: &ExportOptions, info: &ProbeIn
     let h = even(o.h.min(info.height));
     let x = o.x.min(info.width - w);
     let y = o.y.min(info.height - h);
-    let vf = format!("crop={w}:{h}:{x}:{y},setsar=1");
+    let crop = format!("crop={w}:{h}:{x}:{y},setsar=1");
 
-    let q = o.quality.min(100) as f64;
     let mut a: Vec<String> = ["-y", "-hide_banner", "-nostats", "-progress", "pipe:1", "-i"]
         .iter()
         .map(|s| s.to_string())
         .collect();
     a.push(input.to_string_lossy().into_owned());
-    a.extend(["-map", "0:v:0", "-map", "0:a:0?", "-vf", &vf].map(String::from));
+
+    if o.format == Format::Gif {
+        // 프레임 수·크기를 줄이고, 영상에서 뽑은 256색 팔레트로 변환해야 GIF 화질이 산다
+        let fps = o.gif_fps.clamp(1, 50);
+        let mut vf = format!("crop={w}:{h}:{x}:{y},fps={fps}");
+        if let Some(gw) = o.gif_width.filter(|&gw| gw > 0 && gw < w) {
+            vf += &format!(",scale={}:-2:flags=lanczos", even(gw));
+        }
+        // 짝수 보정으로 비율이 미세하게 달라져도 픽셀 비율은 1:1 로 (scale 뒤에 둬야 함)
+        vf += ",setsar=1,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle";
+        a.extend(["-map", "0:v:0", "-vf", &vf, "-an", "-loop", "0"].map(String::from));
+        a.push(output.to_string_lossy().into_owned());
+        return a;
+    }
+
+    let q = o.quality.min(100) as f64;
+    a.extend(["-map", "0:v:0", "-map", "0:a:0?", "-vf", &crop].map(String::from));
 
     // 품질(0~100) → 코덱별 파라미터
     let crf = (35.0 - q * 0.2).round() as u32; // 100 → 15, 50 → 25, 0 → 35
@@ -288,10 +333,34 @@ mod tests {
             width: 1920, height: 1080, rotation: 0, duration: 1.0, fps: 30.0,
             video_codec: "h264".into(), audio_codec: Some("aac".into()), size: 0,
         };
-        let o = ExportOptions { x: 0, y: 0, w: 608, h: 1080, codec: "av1".into(), quality: 75, audio: "auto".into() };
+        let o = ExportOptions {
+            x: 0, y: 0, w: 608, h: 1080, format: Format::Mp4, codec: "av1".into(), quality: 75, audio: "auto".into(),
+            gif_fps: 15, gif_width: None,
+        };
         let args = build_args(Path::new("in.mp4"), Path::new("out.mp4"), &o, &info).join(" ");
         assert!(args.contains("-c:v libsvtav1 -preset 8 -crf 28"), "{args}");
         assert!(!args.contains("hvc1"));
+    }
+
+    #[test]
+    fn gif_args() {
+        let info = ProbeInfo {
+            width: 1920, height: 1080, rotation: 0, duration: 1.0, fps: 30.0,
+            video_codec: "h264".into(), audio_codec: Some("aac".into()), size: 0,
+        };
+        let o = ExportOptions {
+            x: 0, y: 0, w: 608, h: 1080, format: Format::Gif, codec: "x264".into(), quality: 75, audio: "auto".into(),
+            gif_fps: 12, gif_width: Some(481),
+        };
+        let args = build_args(Path::new("in.mp4"), Path::new("out.gif"), &o, &info).join(" ");
+        assert!(args.contains("crop=608:1080:0:0,fps=12,scale=480:-2:flags=lanczos,setsar=1,split"), "{args}");
+        assert!(args.contains("palettegen") && args.contains("paletteuse"), "{args}");
+        assert!(args.contains("-an -loop 0 out.gif"), "{args}");
+        assert!(!args.contains("-c:v") && !args.contains("0:a:0"), "{args}");
+        // 크롭보다 크거나 같은 가로는 무시 (확대하지 않음)
+        let o = ExportOptions { gif_width: Some(608), ..o };
+        let args = build_args(Path::new("in.mp4"), Path::new("out.gif"), &o, &info).join(" ");
+        assert!(!args.contains(",scale="), "{args}");
     }
 
     /// ffmpeg 이 설치된 환경에서 `VC_TEST_DIR=<샘플 폴더> cargo test -- --ignored` 로 실행
@@ -308,7 +377,10 @@ mod tests {
             // 9:16 크롭, 홀수 크기 입력 → 짝수로 보정되는지
             let h = info.height;
             let w = h * 9 / 16 + 1;
-            let o = ExportOptions { x: 101, y: 0, w, h, codec: codec.into(), quality: 70, audio: "auto".into() };
+            let o = ExportOptions {
+                x: 101, y: 0, w, h, format: Format::Mp4, codec: codec.into(), quality: 70, audio: "auto".into(),
+                gif_fps: 15, gif_width: None,
+            };
             let out = dir.join(format!("out_{name}.mp4"));
             let args = build_args(&input, &out, &o, &info);
             let mut last = 0.0;
