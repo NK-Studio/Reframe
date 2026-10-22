@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ffmpeg 를 동봉한 Video Crop.app 을 만들고 dist/ 에 zip 으로 묶는다. (macOS, Apple Silicon)
+# ffmpeg 를 동봉한 Reframe.app 을 만들고 dist/ 에 zip 으로 묶는다. (macOS, Apple Silicon)
 #
 # 먼저 scripts/build-ffmpeg-macos.sh 로 build/ffmpeg-macos/ 를 만들어 둔다.
 set -euo pipefail
@@ -7,22 +7,22 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FFMPEG_DIR="$ROOT/build/ffmpeg-macos"
 VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$ROOT/Cargo.toml" | head -1)"
-APP="$ROOT/dist/Video Crop.app"
-ZIP="$ROOT/dist/Video-Crop-$VERSION-macos-$(uname -m).zip"
+APP="$ROOT/dist/Reframe.app"
+ZIP="$ROOT/dist/Reframe-$VERSION-macos-$(uname -m).zip"
 
 [ -x "$FFMPEG_DIR/ffmpeg" ] || { echo "먼저 scripts/build-ffmpeg-macos.sh 를 실행하세요" >&2; exit 1; }
 
 cd "$ROOT"
 # 바이너리에 빌드 PC 경로(홈 폴더, 저장소 위치)가 남지 않게 바꿔 기록한다
 RUSTFLAGS="--remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$ROOT=/src --remap-path-prefix=$HOME=/home" cargo build --release
-if strings target/release/video-crop | grep -q "$HOME"; then
+if strings target/release/reframe | grep -q "$HOME"; then
     echo "오류: 바이너리에 홈 폴더 경로가 남아 있습니다" >&2
     exit 1
 fi
 
 rm -rf "$APP" "$ZIP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/ffmpeg"
-cp target/release/video-crop "$APP/Contents/MacOS/"
+cp target/release/reframe "$APP/Contents/MacOS/"
 cp "$FFMPEG_DIR"/{ffmpeg,ffprobe,BUILD_INFO.txt,LICENSE-ffmpeg.txt} "$APP/Contents/Resources/ffmpeg/"
 cp LICENSE THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/"
 
@@ -31,10 +31,10 @@ cat > "$APP/Contents/Info.plist" <<EOF
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key><string>Video Crop</string>
-    <key>CFBundleDisplayName</key><string>Video Crop</string>
-    <key>CFBundleIdentifier</key><string>com.nkstudio.videocrop</string>
-    <key>CFBundleExecutable</key><string>video-crop</string>
+    <key>CFBundleName</key><string>Reframe</string>
+    <key>CFBundleDisplayName</key><string>Reframe</string>
+    <key>CFBundleIdentifier</key><string>com.nkstudio.reframe</string>
+    <key>CFBundleExecutable</key><string>reframe</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleVersion</key><string>$VERSION</string>
     <key>CFBundleShortVersionString</key><string>$VERSION</string>

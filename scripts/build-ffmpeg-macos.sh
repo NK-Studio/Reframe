@@ -70,7 +70,7 @@ rm -rf "$SRC" && tar -xf "$TARBALL" -C "$WORK"
 # 5) 빌드
 cd "$SRC"
 CONFIGURE_FLAGS=(
-    --prefix=/opt/video-crop/ffmpeg
+    --prefix=/opt/reframe/ffmpeg
     --enable-gpl
     --enable-version3
     --enable-static --disable-shared

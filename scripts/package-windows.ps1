@@ -11,7 +11,7 @@ $ErrorActionPreference = "Stop"
 $Root = Resolve-Path "$PSScriptRoot\.."
 Set-Location $Root
 $Version = (Select-String -Path Cargo.toml -Pattern '^version = "(.*)"').Matches[0].Groups[1].Value
-$Out = "dist\Video-Crop-$Version-windows-x64"
+$Out = "dist\Reframe-$Version-windows-x64"
 $Zip = "$Out.zip"
 
 $env:RUSTFLAGS = "--remap-path-prefix=$env:USERPROFILE\.cargo=/cargo --remap-path-prefix=$Root=/src --remap-path-prefix=$env:USERPROFILE=/home"
@@ -28,10 +28,10 @@ $Extract = "build\$Asset"
 if (Test-Path $Extract) { Remove-Item -Recurse -Force $Extract }
 Expand-Archive $Cache -DestinationPath build
 
-# 2) 배포 폴더 구성: video-crop.exe 옆 ffmpeg\ 폴더에 둔다 (앱이 이 위치를 먼저 찾는다)
+# 2) 배포 폴더 구성: reframe.exe 옆 ffmpeg\ 폴더에 둔다 (앱이 이 위치를 먼저 찾는다)
 if (Test-Path $Out) { Remove-Item -Recurse -Force $Out }
 New-Item -ItemType Directory -Force "$Out\ffmpeg" | Out-Null
-Copy-Item target\release\video-crop.exe $Out
+Copy-Item target\release\reframe.exe $Out
 Copy-Item LICENSE, THIRD_PARTY_NOTICES.md $Out
 Copy-Item "$Extract\bin\ffmpeg.exe", "$Extract\bin\ffprobe.exe" "$Out\ffmpeg"
 Copy-Item "$Extract\LICENSE.txt" "$Out\ffmpeg\LICENSE-ffmpeg.txt"

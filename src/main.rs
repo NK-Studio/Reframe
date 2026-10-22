@@ -115,7 +115,7 @@ fn main() -> wry::Result<()> {
     let proxy = event_loop.create_proxy();
 
     let window = WindowBuilder::new()
-        .with_title("Video Crop")
+        .with_title("Reframe")
         .with_inner_size(LogicalSize::new(1280.0, 820.0))
         .with_min_inner_size(LogicalSize::new(900.0, 600.0))
         // 페이지가 그려지기 전 흰 화면이 번쩍이지 않게 UI 배경색(--bg)과 맞춘다

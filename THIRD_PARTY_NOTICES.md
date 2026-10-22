@@ -1,10 +1,10 @@
 # Third-party notices
 
-Video Crop 자체는 [GPL-3.0](LICENSE)으로 배포합니다. 함께 쓰는 외부 소프트웨어의 라이선스는 아래와 같습니다.
+Reframe 자체는 [GPL-3.0](LICENSE)으로 배포합니다. 함께 쓰는 외부 소프트웨어의 라이선스는 아래와 같습니다.
 
 ## FFmpeg
 
-Video Crop은 FFmpeg(`ffmpeg`, `ffprobe`)를 별도 프로그램으로 실행해 영상 정보를 읽고 크롭·인코딩합니다.
+Reframe은 FFmpeg(`ffmpeg`, `ffprobe`)를 별도 프로그램으로 실행해 영상 정보를 읽고 크롭·인코딩합니다.
 
 - 저장소의 소스 코드에는 FFmpeg가 포함되어 있지 않습니다. 소스로 빌드해 쓸 때는 시스템에 설치된 FFmpeg를 사용합니다 (예: `brew install ffmpeg`).
 - 배포본(macOS `.app`, Windows zip)에는 libx264·libx265·SVT-AV1을 포함한 GPL 빌드 FFmpeg가 들어 있으며, **GPL-3.0** 조건을 따릅니다.

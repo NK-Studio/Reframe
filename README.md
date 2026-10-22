@@ -1,4 +1,4 @@
-# Video Crop
+# Reframe
 
 ffmpeg 기반 영상 **화면 영역(가로·세로) 크롭** 도구. Rust + [wry](https://github.com/tauri-apps/wry) / tao.
 
@@ -30,13 +30,13 @@ cargo run --release
 ```bash
 brew install cmake pkgconf
 ./scripts/build-ffmpeg-macos.sh   # build/ffmpeg-macos/ 에 ffmpeg, ffprobe 생성 (수 분)
-./scripts/package-macos.sh        # dist/Video Crop.app, dist/Video-Crop-<버전>-macos-arm64.zip
+./scripts/package-macos.sh        # dist/Reframe.app, dist/Reframe-<버전>-macos-arm64.zip
 ```
 
-**Windows (x64)**: [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds)의 정적 GPL 빌드를 받아 `video-crop.exe` 옆 `ffmpeg\` 폴더에 넣습니다.
+**Windows (x64)**: [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds)의 정적 GPL 빌드를 받아 `reframe.exe` 옆 `ffmpeg\` 폴더에 넣습니다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1   # dist\Video-Crop-<버전>-windows-x64.zip
+powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1   # dist\Reframe-<버전>-windows-x64.zip
 ```
 
 동봉한 ffmpeg의 버전, 빌드 옵션, 소스 위치는 배포본 안의 `ffmpeg/BUILD_INFO.txt`에 기록됩니다.
