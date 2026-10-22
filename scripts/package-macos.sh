@@ -13,7 +13,12 @@ ZIP="$ROOT/dist/Video-Crop-$VERSION-macos-$(uname -m).zip"
 [ -x "$FFMPEG_DIR/ffmpeg" ] || { echo "먼저 scripts/build-ffmpeg-macos.sh 를 실행하세요" >&2; exit 1; }
 
 cd "$ROOT"
-cargo build --release
+# 바이너리에 빌드 PC 경로(홈 폴더, 저장소 위치)가 남지 않게 바꿔 기록한다
+RUSTFLAGS="--remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$ROOT=/src --remap-path-prefix=$HOME=/home" cargo build --release
+if strings target/release/video-crop | grep -q "$HOME"; then
+    echo "오류: 바이너리에 홈 폴더 경로가 남아 있습니다" >&2
+    exit 1
+fi
 
 rm -rf "$APP" "$ZIP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/ffmpeg"

@@ -19,6 +19,9 @@ DEPS="$ROOT/build/ffmpeg-deps"
 OUT="$ROOT/build/ffmpeg-macos"
 JOBS="$(sysctl -n hw.ncpu)"
 export MACOSX_DEPLOYMENT_TARGET="$MACOS_MIN"
+# x264/x265/SVT-AV1 은 절대 경로로 컴파일되므로, 바이너리에 빌드 PC 경로가 남지 않게 바꿔 기록한다.
+# (FFmpeg 은 상대 경로로 빌드되고 configure 옵션이 바이너리에 그대로 들어가므로 여기에 넣지 않는다)
+PATH_MAP="-ffile-prefix-map=$WORK=/src -ffile-prefix-map=$DEPS=/deps"
 
 for t in cmake pkg-config git; do
     command -v "$t" >/dev/null || { echo "$t 가 필요합니다 (brew install cmake pkgconf)" >&2; exit 1; }
@@ -31,7 +34,7 @@ rm -rf "$X264_SRC"
 git clone --quiet --depth 1 --branch "$X264_BRANCH" https://code.videolan.org/videolan/x264.git "$X264_SRC"
 X264_COMMIT="$(git -C "$X264_SRC" rev-parse HEAD)"
 (cd "$X264_SRC" && ./configure --prefix="$DEPS" --enable-static --disable-cli \
-    --extra-cflags="-mmacosx-version-min=$MACOS_MIN" --extra-ldflags="-mmacosx-version-min=$MACOS_MIN" \
+    --extra-cflags="-mmacosx-version-min=$MACOS_MIN $PATH_MAP" --extra-ldflags="-mmacosx-version-min=$MACOS_MIN" \
     && make -j"$JOBS" && make install-lib-static)
 
 # 2) x265 (정적 라이브러리)
@@ -41,7 +44,8 @@ X265_SRC="$WORK/x265_$X265_VERSION"
 rm -rf "$X265_SRC" && tar -xf "$X265_TARBALL" -C "$WORK"
 cmake -S "$X265_SRC/source" -B "$X265_SRC/build" -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="$DEPS" -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOS_MIN" \
-    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DENABLE_SHARED=OFF -DENABLE_CLI=OFF
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DENABLE_SHARED=OFF -DENABLE_CLI=OFF \
+    -DCMAKE_C_FLAGS="$PATH_MAP" -DCMAKE_CXX_FLAGS="$PATH_MAP"
 cmake --build "$X265_SRC/build" -j"$JOBS"
 cmake --install "$X265_SRC/build"
 
@@ -52,7 +56,8 @@ SVT_SRC="$WORK/SVT-AV1-v$SVTAV1_VERSION"
 rm -rf "$SVT_SRC" && tar -xf "$SVT_TARBALL" -C "$WORK"
 cmake -S "$SVT_SRC" -B "$SVT_SRC/build" -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="$DEPS" -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOS_MIN" \
-    -DBUILD_SHARED_LIBS=OFF -DBUILD_APPS=OFF -DBUILD_TESTING=OFF
+    -DBUILD_SHARED_LIBS=OFF -DBUILD_APPS=OFF -DBUILD_TESTING=OFF \
+    -DCMAKE_C_FLAGS="$PATH_MAP" -DCMAKE_CXX_FLAGS="$PATH_MAP"
 cmake --build "$SVT_SRC/build" -j"$JOBS"
 cmake --install "$SVT_SRC/build"
 
@@ -65,7 +70,7 @@ rm -rf "$SRC" && tar -xf "$TARBALL" -C "$WORK"
 # 5) 빌드
 cd "$SRC"
 CONFIGURE_FLAGS=(
-    --prefix="$OUT"
+    --prefix=/opt/video-crop/ffmpeg
     --enable-gpl
     --enable-version3
     --enable-static --disable-shared
@@ -98,7 +103,11 @@ configure ${CONFIGURE_FLAGS[*]}
 EOF
 cp COPYING.GPLv3 "$OUT/LICENSE-ffmpeg.txt"
 
-# 7) Homebrew 경로에 의존하면 실패 처리
+# 7) Homebrew 경로 의존이나 빌드 PC 경로가 남아 있으면 실패 처리
+if strings "$OUT/ffmpeg" "$OUT/ffprobe" "$OUT/BUILD_INFO.txt" | grep -q "$HOME"; then
+    echo "오류: 바이너리에 빌드 PC 경로($HOME)가 남아 있습니다" >&2
+    exit 1
+fi
 if otool -L "$OUT/ffmpeg" "$OUT/ffprobe" | grep -q -E '/opt/homebrew|/usr/local'; then
     echo "오류: Homebrew 라이브러리에 의존합니다" >&2
     otool -L "$OUT/ffmpeg" >&2

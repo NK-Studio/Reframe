@@ -14,6 +14,7 @@ $Version = (Select-String -Path Cargo.toml -Pattern '^version = "(.*)"').Matches
 $Out = "dist\Video-Crop-$Version-windows-x64"
 $Zip = "$Out.zip"
 
+$env:RUSTFLAGS = "--remap-path-prefix=$env:USERPROFILE\.cargo=/cargo --remap-path-prefix=$Root=/src --remap-path-prefix=$env:USERPROFILE=/home"
 cargo build --release
 if ($LASTEXITCODE -ne 0) { throw "cargo build 실패" }
 
