@@ -92,7 +92,7 @@ pkgbuild --root "$WORK/root" --install-location / --component-plist "$WORK/compo
     --scripts "$WORK/scripts" --identifier com.nkstudio.reframe --version "$VERSION" "$WORK/Reframe.pkg"
 cp LICENSE "$WORK/res/LICENSE.txt"
 cat > "$WORK/res/welcome.html" <<EOF
-<html><body style="font-family:-apple-system">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"></head><body style="font-family:-apple-system">
 <h2>Reframe $VERSION</h2>
 <p>영상의 화면 영역을 잘라 MP4·GIF 로 내보내는 도구입니다.</p>
 <ul>
