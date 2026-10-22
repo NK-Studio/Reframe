@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Video Crop</title>
+<style>
+  :root {
+    --bg: #16171a; --panel: #1f2125; --panel2: #272a30; --line: #34373e;
+    --text: #e8e9ec; --muted: #9a9ea8; --accent: #4f8cff; --accent2: #3a6fd8;
+    --danger: #ff5d5d; --ok: #3ecf8e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    user-select: none; -webkit-user-select: none; overflow: hidden; }
+  button, input, select { font: inherit; color: inherit; }
+  button { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: #4a4e57; background: #2e3138; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: white; font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: var(--accent2); }
+  input[type=number], input[type=text], select {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; width: 100%; user-select: text; -webkit-user-select: text; }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+
+  .app { display: grid; grid-template-columns: 1fr 300px; height: 100%; }
+  .main { display: flex; flex-direction: column; min-width: 0; }
+  .topbar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .topbar .name { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stage { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .empty { text-align: center; color: var(--muted); border: 2px dashed var(--line); border-radius: 14px; padding: 48px 64px; }
+  .empty b { display: block; color: var(--text); font-size: 16px; margin-bottom: 6px; }
+  .stage.drag .empty { border-color: var(--accent); color: var(--text); }
+
+  .frame { position: relative; background: black; display: none; }
+  .clip { position: absolute; inset: 0; overflow: hidden; }
+  .shade { position: absolute; box-shadow: 0 0 0 9999px rgba(0,0,0,.6); pointer-events: none; }
+  .frame video, .frame img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: fill; }
+  .crop { position: absolute; outline: 1px solid rgba(255,255,255,.9); cursor: move; }
+  .crop .grid { position: absolute; inset: 0; pointer-events: none; opacity: .0; transition: opacity .15s; }
+  .crop.active .grid, .crop:hover .grid { opacity: 1; }
+  .grid i { position: absolute; background: rgba(255,255,255,.35); }
+  .grid i:nth-child(1) { left: 33.33%; top: 0; bottom: 0; width: 1px; }
+  .grid i:nth-child(2) { left: 66.66%; top: 0; bottom: 0; width: 1px; }
+  .grid i:nth-child(3) { top: 33.33%; left: 0; right: 0; height: 1px; }
+  .grid i:nth-child(4) { top: 66.66%; left: 0; right: 0; height: 1px; }
+  .h { position: absolute; width: 14px; height: 14px; background: white; border-radius: 3px; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
+  .h.nw { left: -7px; top: -7px; cursor: nwse-resize; } .h.se { right: -7px; bottom: -7px; cursor: nwse-resize; }
+  .h.ne { right: -7px; top: -7px; cursor: nesw-resize; } .h.sw { left: -7px; bottom: -7px; cursor: nesw-resize; }
+  .h.n, .h.s { left: calc(50% - 10px); width: 20px; height: 8px; cursor: ns-resize; }
+  .h.e, .h.w { top: calc(50% - 10px); width: 8px; height: 20px; cursor: ew-resize; }
+  .h.n { top: -4px; } .h.s { bottom: -4px; } .h.e { right: -4px; } .h.w { left: -4px; }
+  .badge { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); background: rgba(0,0,0,.65);
+    padding: 3px 8px; border-radius: 5px; font-variant-numeric: tabular-nums; pointer-events: none; white-space: nowrap; }
+
+  .timeline { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line); }
+  .timeline input[type=range] { flex: 1; accent-color: var(--accent); }
+  .time { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 110px; text-align: right; }
+
+  .side { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 18px; }
+  .sec h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .ratios { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .ratios button { padding: 7px 0; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; }
+  .ratios button .shape { border: 1.5px solid currentColor; border-radius: 2px; }
+  .ratios button.on { border-color: var(--accent); color: var(--accent); background: rgba(79,140,255,.1); }
+  .row { display: flex; gap: 6px; align-items: center; }
+  .row > label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; color: var(--muted); font-size: 11px; }
+  .scrub { cursor: ew-resize; align-self: flex-start; }
+  .scrub:hover { color: var(--text); }
+  .path { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px;
+    color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+  .custom { margin-top: 8px; display: none; }
+  .custom.on { display: flex; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .info { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; }
+  .info span:nth-child(odd) { color: var(--muted); }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { flex: 1; border: 0; border-radius: 0; background: transparent; padding: 5px 0; }
+  .seg button.on { background: var(--accent); color: white; }
+  input[type=range].q { width: 100%; accent-color: var(--accent); }
+  .export { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
+  .export .primary { padding: 10px; font-size: 14px; }
+  .bar { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; display: none; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .status { font-size: 12px; color: var(--muted); word-break: break-all; white-space: pre-wrap; }
+  .status.err { color: var(--danger); } .status.ok { color: var(--ok); }
+  details { font-size: 11px; color: var(--muted); }
+  details code { display: block; margin-top: 4px; padding: 6px; background: var(--bg); border-radius: 5px; word-break: break-all; user-select: text; -webkit-user-select: text; }
+  .toast { position: fixed; left: 50%; bottom: 70px; transform: translateX(-50%); background: #3a1d1d; border: 1px solid var(--danger);
+    padding: 8px 14px; border-radius: 8px; display: none; max-width: 70%; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="main">
+    <div class="topbar">
+      <button id="openBtn">영상 열기…</button>
+      <span class="name" id="fileName">파일을 열거나 창에 끌어다 놓으세요</span>
+    </div>
+    <div class="stage" id="stage">
+      <div class="empty" id="empty"><b>영상 파일을 여기에 드롭</b>또는 [영상 열기…] 클릭<br><br>MP4 · MOV · MKV · WEBM · AVI …</div>
+      <div class="frame" id="frame">
+        <div class="clip">
+          <video id="video" playsinline preload="auto" muted></video>
+          <img id="still" alt="" style="display:none">
+          <div class="shade" id="shade"></div>
+        </div>
+        <div class="crop" id="crop">
+          <div class="grid"><i></i><i></i><i></i><i></i></div>
+          <div class="badge" id="badge"></div>
+          <div class="h nw" data-h="nw"></div><div class="h n" data-h="n"></div><div class="h ne" data-h="ne"></div>
+          <div class="h e" data-h="e"></div><div class="h se" data-h="se"></div><div class="h s" data-h="s"></div>
+          <div class="h sw" data-h="sw"></div><div class="h w" data-h="w"></div>
+        </div>
+      </div>
+    </div>
+    <div class="timeline">
+      <button id="playBtn" disabled>▶</button>
+      <input type="range" id="seek" min="0" max="1000" value="0" disabled>
+      <span class="time" id="time">0:00 / 0:00</span>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="sec">
+      <h3>비율</h3>
+      <div class="ratios" id="ratios"></div>
+      <div class="row custom" id="customRow">
+        <input type="number" id="customA" min="1" value="5" title="가로">
+        <span>:</span>
+        <input type="number" id="customB" min="1" value="4" title="세로">
+        <button id="swapBtn" title="가로/세로 뒤집기">⇄</button>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h3>크롭 영역 (원본 픽셀)</h3>
+      <div class="row">
+        <label><span class="scrub" data-for="cx" title="좌우로 드래그해서 조절">X</span><input type="number" id="cx" min="0"></label>
+        <label><span class="scrub" data-for="cy" title="좌우로 드래그해서 조절">Y</span><input type="number" id="cy" min="0"></label>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <label><span class="scrub" data-for="cw" title="좌우로 드래그해서 조절">너비</span><input type="number" id="cw" min="2"></label>
+        <label><span class="scrub" data-for="ch" title="좌우로 드래그해서 조절">높이</span><input type="number" id="ch" min="2"></label>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="fillWBtn" style="flex:1" title="크롭을 영상 가로 끝까지 늘림 (비율 유지)">↔ 가로로 늘리기</button>
+        <button id="fillHBtn" style="flex:1" title="크롭을 영상 세로 끝까지 늘림 (비율 유지)">↕ 세로로 늘리기</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="centerBtn" style="flex:1">가운데 정렬</button>
+        <button id="maxBtn" style="flex:1">최대 크기</button>
+      </div>
+      <p class="muted" style="margin:8px 0 0">드래그로 이동 · 모서리로 크기 조절<br>방향키 1px · Shift+방향키 10px 이동<br>숫자 칸: 입력 즉시 반영 · ↑↓ · 라벨 드래그</p>
+    </div>
+
+    <div class="sec">
+      <h3>출력</h3>
+      <div class="row">
+        <label>출력 가로 (비우면 크롭 크기 그대로)<input type="number" id="outW" min="2" placeholder="예: 1080"></label>
+      </div>
+      <p class="muted" id="outSize" style="margin:6px 0 0"></p>
+      <div class="row" style="margin-top:10px">
+        <label>코덱
+          <select id="codec">
+            <option value="x264">H.264 (libx264) — 호환성 최고</option>
+            <option value="x265">H.265 (libx265) — 용량 작음</option>
+            <option value="vt264">H.264 하드웨어 (macOS) — 빠름</option>
+            <option value="vt265">H.265 하드웨어 (macOS) — 빠름</option>
+          </select>
+        </label>
+      </div>
+      <div style="margin-top:10px">
+        <div class="row muted"><span style="flex:1">화질</span><span id="qv"></span></div>
+        <input type="range" class="q" id="quality" min="0" max="100" value="75">
+      </div>
+      <div style="margin-top:10px">
+        <div class="muted" style="margin-bottom:4px">오디오</div>
+        <div class="seg" id="audio">
+          <button data-v="auto" class="on" title="mp4 호환이면 그대로 복사, 아니면 AAC">자동</button>
+          <button data-v="copy">복사</button>
+          <button data-v="aac">AAC</button>
+          <button data-v="none">제거</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h3>원본 정보</h3>
+      <div class="info" id="info"><span>—</span><span></span></div>
+    </div>
+
+    <div class="export">
+      <div class="sec">
+        <h3>저장</h3>
+        <div class="row">
+          <label>파일 이름
+            <div class="row"><input type="text" id="outName" spellcheck="false" placeholder="파일 이름" disabled><span class="muted">.mp4</span></div>
+          </label>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <label>저장 위치
+            <div class="row"><div class="path" id="outDir" title="">—</div><button id="dirBtn" disabled>변경…</button></div>
+          </label>
+        </div>
+        <p class="muted" id="sameWarn" style="display:none;margin:6px 0 0;color:#f0b04f">원본과 같은 파일입니다. 저장 위치나 이름을 바꿔주세요.</p>
+      </div>
+      <div class="bar" id="bar"><i></i></div>
+      <div class="status" id="status"></div>
+      <div class="row">
+        <button class="primary" id="exportBtn" style="flex:1" disabled>크롭 내보내기</button>
+        <button id="cancelBtn" style="display:none">취소</button>
+      </div>
+      <details id="cmdBox" style="display:none"><summary>ffmpeg 명령어</summary><code id="cmd"></code></details>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const post = (msg) => window.ipc.postMessage(JSON.stringify(msg));
+
+// ---- 상태 ----
+const RATIOS = [
+  { k: 'free',  label: '자유',  r: null },
+  { k: 'orig',  label: '원본',  r: 'orig' },
+  { k: '1:1',   label: '1:1',   r: [1, 1] },
+  { k: '4:5',   label: '4:5',   r: [4, 5] },
+  { k: '4:3',   label: '4:3',   r: [4, 3] },
+  { k: '3:4',   label: '3:4',   r: [3, 4] },
+  { k: '16:9',  label: '16:9',  r: [16, 9] },
+  { k: '9:16',  label: '9:16',  r: [9, 16] },
+  { k: '3:2',   label: '3:2',   r: [3, 2] },
+  { k: '2:3',   label: '2:3',   r: [2, 3] },
+  { k: '21:9',  label: '21:9',  r: [21, 9] },
+  { k: 'custom', label: '커스텀', r: 'custom' },
+];
+const st = {
+  info: null,           // { width, height, duration, ... }
+  crop: { x: 0, y: 0, w: 0, h: 0 },
+  ratioKey: 'free',
+  audio: 'auto',
+  stillMode: false,     // WebView 가 재생 못 하는 코덱이면 ffmpeg 프레임 미리보기
+  frameUrl: '',
+  exporting: false,
+  lastOutput: null,
+};
+
+// 현재 비율 (w/h), 자유면 null
+function ratio() {
+  const def = RATIOS.find(r => r.k === st.ratioKey);
+  if (!def || def.r === null) return null;
+  if (def.r === 'orig') return st.info.width / st.info.height;
+  if (def.r === 'custom') {
+    const a = +$('customA').value, b = +$('customB').value;
+    return a > 0 && b > 0 ? a / b : null;
+  }
+  return def.r[0] / def.r[1];
+}
+
+// ---- 비율 버튼 ----
+function buildRatioButtons() {
+  const box = $('ratios');
+  for (const def of RATIOS) {
+    const b = document.createElement('button');
+    b.dataset.k = def.k;
+    let w = 18, h = 18;
+    if (Array.isArray(def.r)) { const s = 20 / Math.max(...def.r); w = def.r[0] * s; h = def.r[1] * s; }
+    else if (def.k === 'free') { w = 20; h = 14; }
+    else if (def.k === 'orig') { w = 20; h = 12; }
+    const dash = def.k === 'free' || def.k === 'custom' ? 'border-style:dashed;' : '';
+    b.innerHTML = `<span class="shape" style="width:${w}px;height:${h}px;${dash}"></span>${def.label}`;
+    b.onclick = () => setRatio(def.k);
+    box.appendChild(b);
+  }
+}
+function setRatio(k) {
+  st.ratioKey = k;
+  document.querySelectorAll('#ratios button').forEach(b => b.classList.toggle('on', b.dataset.k === k));
+  $('customRow').classList.toggle('on', k === 'custom');
+  if (st.info) applyRatio();
+}
+
+// 현재 크롭의 중심을 유지하면서 비율에 맞는 최대 영역으로
+function applyRatio(maximize = true) {
+  const r = ratio();
+  if (!r) return render();
+  const { width: W, height: H } = st.info;
+  let w, h;
+  if (maximize) { w = W; h = w / r; if (h > H) { h = H; w = h * r; } }
+  else { w = st.crop.w; h = w / r; if (h > H) { h = H; w = h * r; } }
+  const cx = st.crop.x + st.crop.w / 2, cy = st.crop.y + st.crop.h / 2;
+  st.crop = clampMove({ x: cx - w / 2, y: cy - h / 2, w, h });
+  render();
+}
+
+function clampMove(c) {
+  const { width: W, height: H } = st.info;
+  c.w = Math.min(c.w, W); c.h = Math.min(c.h, H);
+  c.x = Math.max(0, Math.min(c.x, W - c.w));
+  c.y = Math.max(0, Math.min(c.y, H - c.h));
+  return c;
+}
+
+// ---- 레이아웃: 영상 프레임을 스테이지에 맞춤 ----
+let scale = 1; // 화면 px / 원본 px
+function layout() {
+  if (!st.info) return;
+  const stage = $('stage'), pad = 48;
+  const aw = stage.clientWidth - pad, ah = stage.clientHeight - pad;
+  scale = Math.min(aw / st.info.width, ah / st.info.height);
+  const f = $('frame');
+  f.style.width = Math.round(st.info.width * scale) + 'px';
+  f.style.height = Math.round(st.info.height * scale) + 'px';
+  render();
+}
+new ResizeObserver(layout).observe($('stage'));
+
+function render() {
+  if (!st.info) return;
+  const c = st.crop;
+  for (const el of [$('crop'), $('shade')]) {
+    el.style.left = c.x * scale + 'px';
+    el.style.top = c.y * scale + 'px';
+    el.style.width = c.w * scale + 'px';
+    el.style.height = c.h * scale + 'px';
+  }
+  const ri = rounded();
+  $('badge').textContent = `${ri.w} × ${ri.h}`;
+  for (const [id, k] of [['cx', 'x'], ['cy', 'y'], ['cw', 'w'], ['ch', 'h']]) {
+    if (document.activeElement !== $(id)) $(id).value = ri[k];
+  }
+  updateOutSize();
+}
+
+// 내보낼 때와 같은 규칙으로 정수/짝수화
+function rounded() {
+  const even = (v) => Math.max(2, Math.floor(v / 2) * 2);
+  const w = even(Math.round(st.crop.w)), h = even(Math.round(st.crop.h));
+  const x = Math.min(Math.round(st.crop.x), st.info.width - w);
+  const y = Math.min(Math.round(st.crop.y), st.info.height - h);
+  return { x: Math.max(0, x), y: Math.max(0, y), w, h };
+}
+
+function updateOutSize() {
+  const r = rounded();
+  const ow = +$('outW').value;
+  if (ow > 0 && ow !== r.w) {
+    const e = (v) => Math.max(2, Math.floor(v / 2) * 2);
+    $('outSize').textContent = `최종 출력: ${e(ow)} × ${e(Math.round(ow * r.h / r.w))} (리사이즈)`;
+  } else {
+    $('outSize').textContent = `최종 출력: ${r.w} × ${r.h}`;
+  }
+}
+
+// ---- 드래그 / 리사이즈 ----
+const MIN = 16;
+let drag = null;
+$('crop').addEventListener('pointerdown', (e) => {
+  if (!st.info || st.exporting) return;
+  e.preventDefault();
+  $('crop').setPointerCapture(e.pointerId);
+  $('crop').classList.add('active');
+  drag = { h: e.target.dataset.h || 'move', sx: e.clientX, sy: e.clientY, c0: { ...st.crop } };
+});
+$('crop').addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const dx = (e.clientX - drag.sx) / scale, dy = (e.clientY - drag.sy) / scale;
+  st.crop = drag.h === 'move'
+    ? clampMove({ ...drag.c0, x: drag.c0.x + dx, y: drag.c0.y + dy })
+    : resize(drag.c0, drag.h, dx, dy, ratio());
+  render();
+});
+const endDrag = () => { drag = null; $('crop').classList.remove('active'); };
+$('crop').addEventListener('pointerup', endDrag);
+$('crop').addEventListener('pointercancel', endDrag);
+
+function resize(c0, h, dx, dy, r) {
+  const { width: W, height: H } = st.info;
+  const L = c0.x, T = c0.y, R = c0.x + c0.w, B = c0.y + c0.h;
+  const hasN = h.includes('n'), hasS = h.includes('s'), hasW = h.includes('w'), hasE = h.includes('e');
+
+  if (!r) { // 자유 비율: 각 변을 독립적으로
+    let l = L, t = T, rr = R, b = B;
+    if (hasW) l = Math.max(0, Math.min(L + dx, R - MIN));
+    if (hasE) rr = Math.min(W, Math.max(R + dx, L + MIN));
+    if (hasN) t = Math.max(0, Math.min(T + dy, B - MIN));
+    if (hasS) b = Math.min(H, Math.max(B + dy, T + MIN));
+    return { x: l, y: t, w: rr - l, h: b - t };
+  }
+
+  if ((hasN || hasS) && (hasW || hasE)) { // 모서리: 반대 모서리를 고정
+    const ax = hasW ? R : L, ay = hasN ? B : T;
+    let w = hasW ? (R - (L + dx)) : (R + dx - L);
+    let hh = hasN ? (B - (T + dy)) : (B + dy - T);
+    w = Math.max(w, hh * r);                 // 더 크게 움직인 쪽을 따라감
+    const maxW = Math.min(hasW ? ax : W - ax, (hasN ? ay : H - ay) * r);
+    w = Math.max(MIN, Math.min(w, maxW));
+    hh = w / r;
+    return { x: hasW ? ax - w : ax, y: hasN ? ay - hh : ay, w, h: hh };
+  }
+
+  if (hasW || hasE) { // 좌우 변: 세로 중심 유지
+    const ax = hasW ? R : L, cy = T + c0.h / 2;
+    let w = hasW ? R - (L + dx) : R + dx - L;
+    const maxW = Math.min(hasW ? ax : W - ax, 2 * Math.min(cy, H - cy) * r);
+    w = Math.max(MIN, Math.min(w, maxW));
+    const hh = w / r;
+    return { x: hasW ? ax - w : ax, y: cy - hh / 2, w, h: hh };
+  }
+  // 상하 변: 가로 중심 유지
+  const ay = hasN ? B : T, cx = L + c0.w / 2;
+  let hh = hasN ? B - (T + dy) : B + dy - T;
+  const maxH = Math.min(hasN ? ay : H - ay, 2 * Math.min(cx, W - cx) / r);
+  hh = Math.max(MIN, Math.min(hh, maxH));
+  const w = hh * r;
+  return { x: cx - w / 2, y: hasN ? ay - hh : ay, w, h: hh };
+}
+
+// 방향키로 미세 이동
+window.addEventListener('keydown', (e) => {
+  if (!st.info || /INPUT|SELECT/.test(document.activeElement.tagName)) return;
+  const step = e.shiftKey ? 10 : 1;
+  const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+  if (d) {
+    e.preventDefault();
+    st.crop = clampMove({ ...st.crop, x: st.crop.x + d[0], y: st.crop.y + d[1] });
+    render();
+  } else if (e.key === ' ') {
+    e.preventDefault(); togglePlay();
+  }
+});
+
+// 숫자 입력: 타이핑하는 즉시 크롭에 반영 (바꾼 필드만 적용, 나머지는 현재 크롭 값 유지)
+const FIELD = { cx: 'x', cy: 'y', cw: 'w', ch: 'h' };
+function applyField(id, v) {
+  if (!st.info || !Number.isFinite(v)) return;
+  const { width: W, height: H } = st.info, r = ratio();
+  let { x, y, w, h } = st.crop;
+  if (id === 'cx') x = v;
+  else if (id === 'cy') y = v;
+  else {
+    if (id === 'cw') { w = Math.max(MIN, Math.min(v, W)); if (r) { h = w / r; if (h > H) { h = H; w = h * r; } } }
+    else { h = Math.max(MIN, Math.min(v, H)); if (r) { w = h * r; if (w > W) { w = W; h = w / r; } } }
+    // 크기가 커져 화면 밖으로 나가면 위치를 당겨서 맞춤
+    x = Math.min(x, W - w); y = Math.min(y, H - h);
+  }
+  st.crop = clampMove({ x, y, w, h });
+  render();
+}
+for (const id of Object.keys(FIELD)) {
+  const el = $(id);
+  el.addEventListener('input', () => { if (el.value !== '') applyField(id, +el.value); });
+  // 포커스를 떠나면 실제 적용된(보정된) 값으로 표시
+  el.addEventListener('blur', render);
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { el.blur(); return; }
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    const step = (e.shiftKey ? 10 : 1) * (e.key === 'ArrowUp' ? 1 : -1);
+    applyField(id, Math.round(st.crop[FIELD[id]]) + step);
+    el.value = rounded()[FIELD[id]];
+  });
+}
+// 라벨(X/Y/너비/높이)을 좌우로 드래그하면 값 조절 (Shift: 10배)
+document.querySelectorAll('.scrub').forEach((lab) => {
+  const id = lab.dataset.for;
+  lab.addEventListener('pointerdown', (e) => {
+    if (!st.info) return;
+    e.preventDefault();
+    lab.setPointerCapture(e.pointerId);
+    const sx = e.clientX, v0 = st.crop[FIELD[id]];
+    const move = (ev) => applyField(id, Math.round(v0 + (ev.clientX - sx) * (ev.shiftKey ? 10 : 1)));
+    const up = () => { lab.removeEventListener('pointermove', move); lab.removeEventListener('pointerup', up); };
+    lab.addEventListener('pointermove', move);
+    lab.addEventListener('pointerup', up);
+  });
+});
+// 가로/세로 끝까지 늘리기: 선택된 비율(커스텀 포함)을 유지하고, 자유 비율이면 반대쪽 크기는 그대로
+function fill(axis) {
+  if (!st.info) return;
+  const { width: W, height: H } = st.info, r = ratio(), c = st.crop;
+  let w = c.w, h = c.h;
+  if (axis === 'w') { w = W; if (r) { h = w / r; if (h > H) { h = H; w = h * r; } } }
+  else { h = H; if (r) { w = h * r; if (w > W) { w = W; h = w / r; } } }
+  const cx = c.x + c.w / 2, cy = c.y + c.h / 2;
+  st.crop = clampMove({ x: cx - w / 2, y: cy - h / 2, w, h });
+  render();
+}
+$('fillWBtn').onclick = () => fill('w');
+$('fillHBtn').onclick = () => fill('h');
+$('centerBtn').onclick = () => { if (!st.info) return;
+  st.crop = clampMove({ ...st.crop, x: (st.info.width - st.crop.w) / 2, y: (st.info.height - st.crop.h) / 2 }); render(); };
+$('maxBtn').onclick = () => { if (!st.info) return;
+  if (ratio()) applyRatio(true); else { st.crop = { x: 0, y: 0, w: st.info.width, h: st.info.height }; render(); } };
+for (const id of ['customA', 'customB']) $(id).addEventListener('input', () => st.info && applyRatio());
+$('swapBtn').onclick = () => { const a = $('customA').value; $('customA').value = $('customB').value; $('customB').value = a; st.info && applyRatio(); };
+$('outW').addEventListener('input', updateOutSize);
+$('quality').addEventListener('input', () => $('qv').textContent = $('quality').value);
+$('qv').textContent = $('quality').value;
+document.querySelectorAll('#audio button').forEach(b => b.onclick = () => {
+  st.audio = b.dataset.v;
+  document.querySelectorAll('#audio button').forEach(x => x.classList.toggle('on', x === b));
+});
+
+// ---- 재생 / 탐색 ----
+const video = $('video');
+const fmt = (s) => { s = Math.max(0, s || 0); const m = Math.floor(s / 60); return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`; };
+function curTime() { return st.stillMode ? (+$('seek').value / 1000) * st.info.duration : video.currentTime; }
+function updateTime() {
+  if (!st.info) return;
+  $('time').textContent = `${fmt(curTime())} / ${fmt(st.info.duration)}`;
+  if (!st.stillMode && !seeking && st.info.duration) $('seek').value = Math.round(video.currentTime / st.info.duration * 1000);
+}
+let seeking = false;
+video.addEventListener('timeupdate', updateTime);
+video.addEventListener('loadedmetadata', () => post({ cmd: 'log', msg: `video ${video.videoWidth}x${video.videoHeight} ${video.duration.toFixed(2)}s` }));
+video.addEventListener('play', () => $('playBtn').textContent = '❚❚');
+video.addEventListener('pause', () => $('playBtn').textContent = '▶');
+video.addEventListener('error', () => {
+  // WebView 에서 재생 불가(mkv/avi/일부 코덱) → ffmpeg 로 뽑은 정지 프레임으로 대체
+  if (!st.info || st.stillMode) return;
+  post({ cmd: 'log', msg: `video error ${video.error && video.error.code} → still mode` });
+  st.stillMode = true;
+  video.style.display = 'none';
+  $('still').style.display = 'block';
+  $('playBtn').disabled = true;
+  showStill(0);
+  toast('이 형식은 미리보기 재생이 안 되어 정지 프레임으로 표시합니다 (내보내기는 정상 동작)');
+});
+$('still').addEventListener('load', () => post({ cmd: 'log', msg: `still ${$('still').naturalWidth}x${$('still').naturalHeight}` }));
+$('still').addEventListener('error', () => toast('프레임 미리보기를 불러오지 못했습니다'));
+function showStill(t) { $('still').src = `${st.frameUrl}&t=${t.toFixed(2)}`; }
+function togglePlay() { if (st.stillMode || !st.info) return; video.paused ? video.play() : video.pause(); }
+$('playBtn').onclick = togglePlay;
+$('seek').addEventListener('input', () => {
+  seeking = true;
+  const t = (+$('seek').value / 1000) * st.info.duration;
+  if (st.stillMode) updateTime(); else video.currentTime = t;
+});
+$('seek').addEventListener('change', () => {
+  seeking = false;
+  if (st.stillMode) showStill((+$('seek').value / 1000) * st.info.duration);
+});
+
+// ---- 파일 열기 ----
+$('openBtn').onclick = () => post({ cmd: 'open' });
+// 실제 파일 드롭은 Rust(wry drag-drop handler)가 처리. 여기서는 시각 효과만.
+window.addEventListener('dragover', (e) => { e.preventDefault(); $('stage').classList.add('drag'); });
+window.addEventListener('dragleave', () => $('stage').classList.remove('drag'));
+window.addEventListener('drop', (e) => { e.preventDefault(); $('stage').classList.remove('drag'); });
+
+function onLoaded(m) {
+  st.info = m.info;
+  st.frameUrl = m.frameUrl;
+  st.stem = m.stem;
+  st.srcDir = m.dir;
+  st.srcIsMp4 = /\.mp4$/i.test(m.name);
+  $('outName').value = m.stem;
+  setDir(m.dir);
+  $('outName').disabled = false;
+  $('dirBtn').disabled = false;
+  st.stillMode = false;
+  $('fileName').textContent = m.name;
+  $('empty').style.display = 'none';
+  $('frame').style.display = 'block';
+  $('still').style.display = 'none';
+  video.style.display = 'block';
+  video.src = m.videoUrl;
+  video.load();
+  $('playBtn').disabled = false;
+  $('seek').disabled = false;
+  $('seek').value = 0;
+  $('exportBtn').disabled = false;
+  checkSame();
+  $('status').textContent = ''; $('status').className = 'status';
+  $('bar').style.display = 'none';
+  const i = m.info;
+  $('info').innerHTML = [
+    ['해상도', `${i.width} × ${i.height}`],
+    ['회전', i.rotation ? `${i.rotation}°` : '없음'],
+    ['길이', fmt(i.duration)],
+    ['FPS', i.fps.toFixed(2)],
+    ['비디오', i.videoCodec],
+    ['오디오', i.audioCodec || '없음'],
+  ].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
+  st.crop = { x: 0, y: 0, w: i.width, h: i.height };
+  layout();
+  if (ratio()) applyRatio(true);
+  updateTime();
+}
+
+// ---- 내보내기 ----
+// .path 는 앞쪽을 말줄임하려고 direction:rtl 을 쓰므로, LRM 으로 감싸 슬래시가 뒤로 튀지 않게 한다
+function setDir(d) { st.outDir = d; $('outDir').textContent = '\u200E' + d + '\u200E'; $('outDir').title = d; checkSame(); }
+// 저장 경로가 원본 파일 자체를 가리키면 경고 + 내보내기 막기
+function checkSame() {
+  const name = $('outName').value.trim().replace(/\.mp4$/i, '');
+  const same = !!st.info && st.srcIsMp4 && st.outDir === st.srcDir && name === st.stem;
+  $('sameWarn').style.display = same ? '' : 'none';
+  $('exportBtn').disabled = st.exporting || !st.info || same;
+}
+$('outName').addEventListener('input', checkSame);
+// 비워둔 채로 포커스를 떠나면 원본 이름으로 되돌림
+$('outName').addEventListener('blur', () => { if (!$('outName').value.trim()) { $('outName').value = st.stem; checkSame(); } });
+$('dirBtn').onclick = () => post({ cmd: 'pickFolder', current: st.outDir });
+$('exportBtn').onclick = () => {
+  const r = rounded();
+  const ow = +$('outW').value;
+  const name = $('outName').value.trim();
+  if (!name) return toast('파일 이름을 입력하세요');
+  if (/[\\/:]/.test(name)) return toast('파일 이름에 / \\ : 는 쓸 수 없습니다');
+  post({ cmd: 'export', dir: st.outDir, name, ...r, out_width: ow > 0 ? ow : null, codec: $('codec').value, quality: +$('quality').value, audio: st.audio });
+};
+$('cancelBtn').onclick = () => post({ cmd: 'cancel' });
+$('status').addEventListener('click', () => { if (st.lastOutput) post({ cmd: 'reveal', path: st.lastOutput }); });
+
+function setExporting(on) {
+  st.exporting = on;
+  $('exportBtn').disabled = on;
+  if (!on) checkSame();
+  $('openBtn').disabled = on;
+  $('dirBtn').disabled = on;
+  $('outName').disabled = on;
+  $('cancelBtn').style.display = on ? '' : 'none';
+  $('bar').style.display = on ? 'block' : $('bar').style.display;
+}
+
+let toastTimer;
+function toast(msg) {
+  $('toast').textContent = msg; $('toast').style.display = 'block';
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').style.display = 'none', 5000);
+}
+
+// ---- Rust → JS ----
+window.onHost = (m) => {
+  switch (m.type) {
+    case 'loaded': onLoaded(m); break;
+    case 'error': toast(m.message); break;
+    case 'folder': setDir(m.path); break;
+    case 'exportStart':
+      video.pause();
+      setExporting(true);
+      st.lastOutput = null;
+      $('bar').querySelector('i').style.width = '0%';
+      $('status').className = 'status'; $('status').textContent = '내보내는 중… 0%';
+      $('cmd').textContent = m.command; $('cmdBox').style.display = '';
+      break;
+    case 'progress':
+      $('bar').querySelector('i').style.width = (m.value * 100).toFixed(1) + '%';
+      $('status').textContent = `내보내는 중… ${(m.value * 100).toFixed(0)}%`;
+      break;
+    case 'exportDone':
+      setExporting(false);
+      $('bar').querySelector('i').style.width = '100%';
+      st.lastOutput = m.path;
+      $('status').className = 'status ok';
+      $('status').textContent = `완료 ✓ (클릭하면 파일 위치 열기)\n${m.path}`;
+      $('status').style.cursor = 'pointer';
+      break;
+    case 'exportError':
+      setExporting(false);
+      $('status').className = 'status err'; $('status').style.cursor = '';
+      $('status').textContent = m.message;
+      break;
+  }
+};
+
+buildRatioButtons();
+setRatio('free');
+</script>
+</body>
+</html>
