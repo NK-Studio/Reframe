@@ -111,8 +111,14 @@
   input[type=checkbox]:disabled { opacity: .5; cursor: default; }
 
   /* ---- 레이아웃 ---- */
-  .app { display: grid; grid-template-columns: 1fr 320px; height: 100%; }
-  .main { display: flex; flex-direction: column; min-width: 0; }
+  .app { display: flex; height: 100%; overflow: hidden; }
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  /* 영상을 열기 전에는 사이드바를 오른쪽 밖에 두고, 열면 밀려 들어온다 (영상 영역은 그만큼 줄어든다) */
+  .side { width: 320px; flex: none; transition: margin-right .38s cubic-bezier(.22, 1, .36, 1), opacity .3s; }
+  .app.bare .side { margin-right: -320px; opacity: 0; pointer-events: none; }
+  .bare-foot { position: absolute; left: 0; right: 0; bottom: 16px; display: none; justify-content: center; }
+  .app.bare .bare-foot { display: flex; }
+  .bare-foot .app-foot { gap: 8px; }
   .topbar { display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 16px; border-bottom: 1px solid var(--line); }
   .topbar .name { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .stage { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 24px;
@@ -238,7 +244,7 @@
 
   /* ---- 내보내기 창: Radix Dialog ---- */
   .modal-back { position: fixed; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center; padding: 24px;
-    background: rgba(0, 0, 0, .65); animation: vc-fade .15s; }
+    background: rgba(0, 0, 0, .5); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: vc-fade .15s; }
   .modal-back.on { display: flex; }
   .modal { width: 420px; max-width: 100%; max-height: 100%; display: flex; flex-direction: column; background: var(--gray-2);
     border-radius: var(--r4); box-shadow: var(--shadow-pop); animation: vc-pop .16s cubic-bezier(.16, 1, .3, 1); }
@@ -260,15 +266,16 @@
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app bare" id="app">
   <div class="main">
     <div class="topbar">
-      <button id="openBtn" class="soft">영상 열기…</button>
+      <button id="openBtn">영상 열기…</button>
       <span class="name" id="fileName">파일을 열거나 창에 끌어다 놓으세요</span>
     </div>
     <div class="stage" id="stage">
       <div class="loading" id="loading"><div class="spin"></div><span id="loadingName"></span></div>
       <div class="empty" id="empty"><b>영상 파일을 여기에 드롭</b>또는 [영상 열기…] 클릭<small>MP4 · MOV · MKV · WEBM · AVI …</small></div>
+      <div class="bare-foot"><button class="app-foot" data-about title="앱 정보"><span class="foot-text">Reframe</span><span class="i">ⓘ</span></button></div>
       <div class="frame" id="frame">
         <div class="clip">
           <video id="video" playsinline preload="auto" muted></video>
@@ -342,7 +349,7 @@
         <button id="cancelBtn" style="display:none">취소</button>
       </div>
       <details id="cmdBox" style="display:none"><summary>ffmpeg 명령어</summary><code id="cmd"></code></details>
-      <button class="app-foot" id="aboutBtn" title="앱 정보"><span id="footText">Reframe</span><span class="i">ⓘ</span></button>
+      <button class="app-foot" data-about title="앱 정보"><span class="foot-text">Reframe</span><span class="i">ⓘ</span></button>
     </div>
   </div>
 </div>
@@ -834,6 +841,7 @@ $('still').addEventListener('load', () => setLoading(false));
 $('still').addEventListener('error', () => setLoading(false));
 
 function onLoaded(m) {
+  $('app').classList.remove('bare'); // 사이드바가 오른쪽에서 밀려 들어온다
   st.info = m.info;
   st.frameUrl = m.frameUrl;
   st.stem = m.stem;
@@ -1099,18 +1107,16 @@ function toast(msg) {
 }
 
 // ---- 앱 정보: 사이드바 아래 한 줄 + 정보 창 ----
-const about = { version: '', tools: null };
+const about = { version: '' };
 const aboutOpen = () => $('aboutDlg').classList.contains('on');
 function renderAbout() {
-  const t = about.tools;
-  const ff = !t ? '확인 중…' : t.missing ? 'ffmpeg 없음' : t.bundled ? 'ffmpeg 동봉' : '시스템 ffmpeg';
-  $('footText').textContent = `Reframe${about.version ? ' v' + about.version : ''} · ${ff}`;
+  document.querySelectorAll('.foot-text').forEach(el => el.textContent = `Reframe${about.version ? ' v' + about.version : ''}`);
   $('aboutVer').textContent = about.version ? 'v' + about.version : '';
   $('aboutVer').style.display = about.version ? '' : 'none';
 }
 function openAbout() { closeList(); renderAbout(); $('aboutDlg').classList.add('on'); $('aboutClose').focus(); }
 function closeAbout() { $('aboutDlg').classList.remove('on'); }
-$('aboutBtn').onclick = openAbout;
+document.querySelectorAll('[data-about]').forEach(b => b.onclick = openAbout);
 $('aboutClose').onclick = closeAbout;
 $('repoBtn').onclick = () => post({ cmd: 'openRepo' });
 $('aboutDlg').addEventListener('pointerdown', (e) => { if (e.target === $('aboutDlg')) closeAbout(); });
@@ -1136,7 +1142,7 @@ window.onHost = (m) => {
     case 'error': toast(m.message); break;
     case 'folder': setDir(m.path); break;
     case 'app': about.version = m.version; renderAbout(); break;
-    case 'tools': about.tools = m; setEncoders(m.encoders); renderAbout(); break;
+    case 'tools': setEncoders(m.encoders); break;
     case 'exportStart':
       video.pause();
       setExporting(true);

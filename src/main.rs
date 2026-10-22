@@ -224,15 +224,11 @@ fn main() -> wry::Result<()> {
             let ffmpeg = ffmpeg.clone();
             let proxy = proxy.clone();
             std::thread::spawn(move || {
-                send(&proxy, json!({
-                    "type": "tools",
-                    "bundled": bundled,
-                    "encoders": ffmpeg::available_encoders(&ffmpeg),
-                }));
+                send(&proxy, json!({"type": "tools", "encoders": ffmpeg::available_encoders(&ffmpeg)}));
             });
         }
         _ => {
-            let _ = proxy.send_event(UserEvent::ToJs(json!({"type": "tools", "missing": true, "encoders": []})));
+            let _ = proxy.send_event(UserEvent::ToJs(json!({"type": "tools", "encoders": []})));
             let _ = proxy.send_event(UserEvent::ToJs(json!({
                 "type": "error",
                 "message": "ffmpeg/ffprobe 를 찾을 수 없습니다. 동봉 버전을 받거나 시스템에 설치하세요 (macOS: brew install ffmpeg)"
