@@ -38,6 +38,8 @@ enum UserEvent {
     Export(ExportRequest),
     Cancel,
     Reveal(PathBuf),
+    /// 앱 정보 창의 GitHub 링크: 기본 브라우저로 저장소 열기
+    OpenRepo,
     /// JS 쪽 `window.onHost(msg)` 로 전달할 메시지
     ToJs(serde_json::Value),
 }
@@ -50,6 +52,7 @@ enum IpcMsg {
     Export(ExportRequest),
     Cancel,
     Reveal { path: PathBuf },
+    OpenRepo,
     /// 디버깅용: JS 로그를 터미널로
     Log { msg: String },
 }
@@ -169,6 +172,7 @@ fn main() -> wry::Result<()> {
                 Ok(IpcMsg::Export(o)) => UserEvent::Export(o),
                 Ok(IpcMsg::Cancel) => UserEvent::Cancel,
                 Ok(IpcMsg::Reveal { path }) => UserEvent::Reveal(path),
+                Ok(IpcMsg::OpenRepo) => UserEvent::OpenRepo,
                 Ok(IpcMsg::Log { msg }) => return eprintln!("[ui] {msg}"),
                 Err(e) => {
                     eprintln!("bad ipc: {e}: {}", req.body());
@@ -198,6 +202,13 @@ fn main() -> wry::Result<()> {
         builder.build_gtk(window.default_vbox().unwrap())?
     };
 
+    // 앱 정보 (사이드바 아래 · 정보 창)
+    let _ = proxy.send_event(UserEvent::ToJs(json!({
+        "type": "app",
+        "version": env!("CARGO_PKG_VERSION"),
+        "description": env!("CARGO_PKG_DESCRIPTION"),
+        "repository": env!("CARGO_PKG_REPOSITORY"),
+    })));
     match &ffmpeg_bin {
         Some(ffmpeg) if ffprobe_bin.is_some() => {
             let bundled = ffmpeg::is_bundled(ffmpeg);
@@ -209,11 +220,14 @@ fn main() -> wry::Result<()> {
                 send(&proxy, json!({
                     "type": "tools",
                     "bundled": bundled,
+                    "path": ffmpeg,
+                    "version": ffmpeg::version(&ffmpeg),
                     "encoders": ffmpeg::available_encoders(&ffmpeg),
                 }));
             });
         }
         _ => {
+            let _ = proxy.send_event(UserEvent::ToJs(json!({"type": "tools", "missing": true, "encoders": []})));
             let _ = proxy.send_event(UserEvent::ToJs(json!({
                 "type": "error",
                 "message": "ffmpeg/ffprobe 를 찾을 수 없습니다. 동봉 버전을 받거나 시스템에 설치하세요 (macOS: brew install ffmpeg)"
@@ -368,7 +382,18 @@ fn handle_event(
         }
         UserEvent::Cancel => ffmpeg::cancel(job),
         UserEvent::Reveal(path) => reveal(&path),
+        UserEvent::OpenRepo => open_url(env!("CARGO_PKG_REPOSITORY")),
     }
+}
+
+/// 기본 브라우저로 URL 열기 (앱이 정한 주소만 넘긴다)
+fn open_url(url: &str) {
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(windows)]
+    let _ = std::process::Command::new("explorer").arg(url).spawn();
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
 fn reveal(path: &std::path::Path) {
