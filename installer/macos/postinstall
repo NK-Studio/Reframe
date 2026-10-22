@@ -1,0 +1,5 @@
+#!/bin/sh
+# 설치 후: 터미널에서 reframe-cli 를 바로 쓸 수 있게 /usr/local/bin 에 링크한다
+mkdir -p /usr/local/bin
+ln -sf /Applications/Reframe.app/Contents/MacOS/reframe-cli /usr/local/bin/reframe-cli
+exit 0

@@ -53,3 +53,24 @@ $BuildConf
 if (Test-Path $Zip) { Remove-Item $Zip }
 Compress-Archive -Path $Out -DestinationPath $Zip
 Write-Host "완료: $Zip"
+
+# 4) 설치 프로그램(MSI): WiX v5 를 build\wix 에 받아 쓴다 (.NET SDK 필요)
+$Wix = "build\wix\wix.exe"
+if (-not (Test-Path $Wix)) {
+    dotnet tool install --tool-path build\wix wix --version 5.0.2
+    if ($LASTEXITCODE -ne 0) { throw "WiX 설치 실패" }
+}
+foreach ($Ext in "WixToolset.UI.wixext/5.0.2", "WixToolset.Util.wixext/5.0.2") {
+    & $Wix extension add -g $Ext
+    if ($LASTEXITCODE -ne 0) { throw "WiX 확장 설치 실패: $Ext" }
+}
+# 라이선스 동의 화면용 RTF (LICENSE 원문)
+$Rtf = "build\LICENSE.rtf"
+$Body = (Get-Content LICENSE -Raw).Replace('\', '\\').Replace('{', '\{').Replace('}', '\}') -replace "`r?`n", "\par`n"
+"{\rtf1\ansi\deff0{\fonttbl{\f0 Segoe UI;}}\fs18 $Body}" | Set-Content -Encoding ascii $Rtf
+$Msi = "dist\Reframe-$Version-windows-x64.msi"
+& $Wix build installer\windows\reframe.wxs -arch x64 -culture ko-KR `
+    -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext `
+    -d Version=$Version -d SourceDir="$Root\$Out" -d LicenseRtf="$Root\$Rtf" -pdbtype none -o $Msi
+if ($LASTEXITCODE -ne 0) { throw "MSI 빌드 실패" }
+Write-Host "완료: $Msi"

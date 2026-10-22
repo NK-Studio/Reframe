@@ -4,7 +4,11 @@ ffmpeg 기반 영상 **화면 영역(가로·세로) 크롭** 도구. Rust + [wr
 
 ## 실행
 
-배포본(macOS `.app`, Windows zip)에는 ffmpeg가 들어 있어 따로 설치할 필요가 없습니다.
+[릴리스](https://github.com/NK-Studio/video-crop/releases)에서 설치 프로그램을 받아 실행하면 됩니다. ffmpeg가 들어 있어 따로 설치할 필요가 없습니다.
+
+- **Windows**: `Reframe-<버전>-windows-x64.msi` → `Program Files\Reframe`에 설치되고, 시작 메뉴에 등록되며, `reframe-cli`가 PATH에 추가됩니다. 설정 > 앱에서 제거할 수 있습니다.
+- **macOS**: `Reframe-<버전>-macos-arm64.pkg` → `/Applications/Reframe.app`에 설치되고, `/usr/local/bin/reframe-cli`가 링크됩니다. 서명하지 않은 설치 프로그램이라 처음에는 우클릭 > 열기로 실행해야 합니다.
+- 설치 없이 쓰려면 같은 버전의 zip을 받으세요.
 
 소스에서 바로 실행할 때는 시스템에 설치된 ffmpeg를 사용합니다.
 
@@ -30,13 +34,13 @@ cargo run --release
 ```bash
 brew install cmake pkgconf
 ./scripts/build-ffmpeg-macos.sh   # build/ffmpeg-macos/ 에 ffmpeg, ffprobe 생성 (수 분)
-./scripts/package-macos.sh        # dist/Reframe.app, dist/Reframe-<버전>-macos-arm64.zip
+./scripts/package-macos.sh        # dist/Reframe.app, dist/Reframe-<버전>-macos-arm64.zip, .pkg
 ```
 
 **Windows (x64)**: [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds)의 정적 GPL 빌드를 받아 `Reframe.exe` 옆 `ffmpeg\` 폴더에 넣습니다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1   # dist\Reframe-<버전>-windows-x64.zip
+powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1   # dist\Reframe-<버전>-windows-x64.zip, .msi (WiX 사용, .NET SDK 필요)
 ```
 
 동봉한 ffmpeg의 버전, 빌드 옵션, 소스 위치는 배포본 안의 `ffmpeg/BUILD_INFO.txt`에 기록됩니다.
@@ -65,8 +69,10 @@ python scripts/make-icons.py
 
 창 없이 크롭·내보내기를 합니다. GUI와 같은 ffmpeg와 인코딩 설정을 씁니다.
 
-- Windows: zip 안의 `reframe-cli.exe` (`Reframe.exe` 옆)
-- macOS: `Reframe.app/Contents/MacOS/reframe-cli`. PATH에 링크해 두면 편합니다.
+설치 프로그램으로 설치하면 터미널에서 바로 `reframe-cli`를 쓸 수 있습니다. zip으로 받았다면 다음 위치에 있습니다.
+
+- Windows: `Reframe.exe` 옆의 `reframe-cli.exe`
+- macOS: `Reframe.app/Contents/MacOS/reframe-cli`. 아래처럼 PATH에 링크해 두면 편합니다.
 
 ```bash
 sudo ln -s /Applications/Reframe.app/Contents/MacOS/reframe-cli /usr/local/bin/reframe-cli

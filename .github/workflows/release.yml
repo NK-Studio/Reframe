@@ -19,7 +19,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: dist/*.zip
+          path: |
+            dist/*.zip
+            dist/*.msi
+            dist/*.pkg
 
   macos:
     runs-on: macos-14
@@ -32,7 +35,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: macos
-          path: dist/*.zip
+          path: |
+            dist/*.zip
+            dist/*.msi
+            dist/*.pkg
 
   release:
     needs: [windows, macos]
@@ -45,5 +51,8 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.zip
+          files: |
+            dist/*.zip
+            dist/*.msi
+            dist/*.pkg
           generate_release_notes: true

@@ -1,6 +1,6 @@
 [package]
 name = "reframe"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 license = "GPL-3.0-only"
 description = "ffmpeg 기반 영상 화면 영역(가로·세로) 크롭 도구"

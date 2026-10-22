@@ -1,0 +1,53 @@
+<!--
+  Reframe Windows 설치 프로그램 (WiX v5). scripts/package-windows.ps1 이 빌드한다.
+  - Program Files\Reframe 에 설치, 시작 메뉴 바로 가기, reframe-cli 를 쓸 수 있게 PATH 에 추가
+  - 같은 UpgradeCode 로 새 버전을 설치하면 이전 버전을 자동으로 지운다 (절대 바꾸지 말 것)
+  변수: Version, SourceDir (배포 폴더), LicenseRtf
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="Reframe" Manufacturer="NK Studio" Version="$(var.Version)"
+           UpgradeCode="150bbd7c-64f2-40f1-82c6-953689ea39a0" Scope="perMachine" Language="1042" Codepage="65001">
+    <MajorUpgrade DowngradeErrorMessage="더 최신 버전의 Reframe 이 이미 설치되어 있습니다." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="ReframeIcon" SourceFile="assets\icon\reframe.ico" />
+    <Property Id="ARPPRODUCTICON" Value="ReframeIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/NK-Studio/video-crop" />
+
+    <!-- 라이선스 동의 → 설치 → 완료(바로 실행) -->
+    <ui:WixUI Id="WixUI_Minimal" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Reframe 실행" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WixShellExecTarget" Value="[#ReframeExe]" />
+    <CustomAction Id="LaunchApp" DllEntry="WixShellExec" Impersonate="yes" BinaryRef="Wix4UtilCA_X64" />
+    <UI>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApp"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed" />
+    </UI>
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Reframe">
+        <Directory Id="FfmpegFolder" Name="ffmpeg" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="Main">
+      <Component Directory="INSTALLFOLDER">
+        <File Id="ReframeExe" Source="$(var.SourceDir)\Reframe.exe" KeyPath="yes">
+          <Shortcut Name="Reframe" Directory="ProgramMenuFolder" WorkingDirectory="INSTALLFOLDER" Icon="ReframeIcon" Advertise="yes" />
+        </File>
+      </Component>
+      <Component Directory="INSTALLFOLDER">
+        <File Source="$(var.SourceDir)\reframe-cli.exe" KeyPath="yes" />
+        <Environment Id="PathCli" Name="PATH" Value="[INSTALLFOLDER]" Part="last" Action="set" System="yes" Permanent="no" />
+      </Component>
+      <Files Directory="INSTALLFOLDER" Include="$(var.SourceDir)\*.txt" />
+      <Files Directory="INSTALLFOLDER" Include="$(var.SourceDir)\*.md" />
+      <Files Directory="INSTALLFOLDER" Include="$(var.SourceDir)\LICENSE" />
+      <Files Directory="FfmpegFolder" Include="$(var.SourceDir)\ffmpeg\*" />
+    </Feature>
+  </Package>
+</Wix>

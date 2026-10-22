@@ -56,3 +56,44 @@ codesign --verify --deep --strict "$APP"
 ditto -c -k --keepParent "$APP" "$ZIP"
 echo "완료: $APP"
 ls -lh "$ZIP"
+
+# 설치 프로그램(pkg): 소개 → 라이선스 동의 → 설치. /Applications 에 앱을 넣고 reframe-cli 를 /usr/local/bin 에 링크한다
+PKG="$ROOT/dist/Reframe-$VERSION-macos-$(uname -m).pkg"
+WORK="$ROOT/build/pkg"
+rm -rf "$WORK" "$PKG" && mkdir -p "$WORK/root/Applications" "$WORK/scripts" "$WORK/res"
+ditto "$APP" "$WORK/root/Applications/Reframe.app"
+cp installer/macos/postinstall "$WORK/scripts/" && chmod +x "$WORK/scripts/postinstall"
+# 다른 위치에 있는 Reframe.app 을 찾아 그 자리에 덮어쓰지 않도록(재배치 끔)
+pkgbuild --analyze --root "$WORK/root" "$WORK/component.plist"
+plutil -replace 0.BundleIsRelocatable -bool NO "$WORK/component.plist"
+pkgbuild --root "$WORK/root" --install-location / --component-plist "$WORK/component.plist" \
+    --scripts "$WORK/scripts" --identifier com.nkstudio.reframe --version "$VERSION" "$WORK/Reframe.pkg"
+cp LICENSE "$WORK/res/LICENSE.txt"
+cat > "$WORK/res/welcome.html" <<EOF
+<html><body style="font-family:-apple-system">
+<h2>Reframe $VERSION</h2>
+<p>영상의 화면 영역을 잘라 MP4·GIF 로 내보내는 도구입니다.</p>
+<ul>
+<li>앱: <b>/Applications/Reframe.app</b></li>
+<li>명령줄 도구: <b>reframe-cli</b> (/usr/local/bin 에 링크)</li>
+</ul>
+</body></html>
+EOF
+cat > "$WORK/distribution.xml" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>Reframe</title>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <license file="LICENSE.txt"/>
+    <options customize="never" require-scripts="false" hostArchitectures="arm64"/>
+    <domains enable_localSystem="true"/>
+    <allowed-os-versions><os-version min="12.0"/></allowed-os-versions>
+    <choices-outline><line choice="default"><line choice="app"/></line></choices-outline>
+    <choice id="default"/>
+    <choice id="app" visible="false"><pkg-ref id="com.nkstudio.reframe"/></choice>
+    <pkg-ref id="com.nkstudio.reframe" version="$VERSION" onConclusion="none">Reframe.pkg</pkg-ref>
+</installer-gui-script>
+EOF
+productbuild --distribution "$WORK/distribution.xml" --resources "$WORK/res" --package-path "$WORK" "$PKG"
+echo "완료: $PKG"
+ls -lh "$PKG"
