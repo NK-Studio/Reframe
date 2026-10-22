@@ -13,7 +13,7 @@
 
     <Icon Id="ReframeIcon" SourceFile="assets\icon\reframe.ico" />
     <Property Id="ARPPRODUCTICON" Value="ReframeIcon" />
-    <Property Id="ARPURLINFOABOUT" Value="https://github.com/NK-Studio/video-crop" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/NK-Studio/Reframe" />
 
     <!-- 라이선스 동의 → 설치 → 완료(바로 실행) -->
     <ui:WixUI Id="WixUI_Minimal" />

@@ -15,7 +15,7 @@ Reframe은 이 과정을 하나의 앱에서, **몇 번의 클릭으로 끝**내
 
 ## 설치
 
-[릴리스](https://github.com/NK-Studio/video-crop/releases)에서 설치 프로그램을 받아 실행하면 됩니다. 다른 프로그램을 따로 설치할 필요는 없습니다.
+[릴리스](https://github.com/NK-Studio/Reframe/releases)에서 설치 프로그램을 받아 실행하면 됩니다. 다른 프로그램을 따로 설치할 필요는 없습니다.
 
 - **Windows**: `Reframe-<버전>-windows-x64.msi`
 - **macOS**: `Reframe-<버전>-macos-arm64.pkg` (처음 실행할 때는 우클릭 > 열기)

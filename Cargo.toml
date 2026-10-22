@@ -4,7 +4,7 @@ version = "1.0.3"
 edition = "2024"
 license = "GPL-3.0-only"
 description = "ffmpeg 기반 영상 화면 영역(가로·세로) 크롭 도구"
-repository = "https://github.com/NK-Studio/video-crop"
+repository = "https://github.com/NK-Studio/Reframe"
 
 [lib]
 name = "reframe_core"
