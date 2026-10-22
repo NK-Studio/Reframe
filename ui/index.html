@@ -634,11 +634,19 @@ function toast(msg) {
 }
 
 // ---- Rust → JS ----
+// 이 ffmpeg 에 없는 인코더(예: Windows 의 VideoToolbox)는 선택지에서 숨긴다
+function setEncoders(list) {
+  const sel = $('codec');
+  for (const o of sel.options) o.hidden = o.disabled = !list.includes(o.value);
+  if (sel.selectedOptions[0]?.disabled) sel.value = list[0] ?? '';
+}
+
 window.onHost = (m) => {
   switch (m.type) {
     case 'loaded': onLoaded(m); break;
     case 'error': toast(m.message); break;
     case 'folder': setDir(m.path); break;
+    case 'tools': setEncoders(m.encoders); break;
     case 'exportStart':
       video.pause();
       setExporting(true);

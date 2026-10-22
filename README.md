@@ -4,11 +4,35 @@ ffmpeg 기반 영상 **화면 영역(가로·세로) 크롭** 도구. Rust + [wr
 
 ## 실행
 
+배포본(macOS `.app`, Windows zip)에는 ffmpeg가 들어 있어 따로 설치할 필요가 없습니다.
+
+소스에서 바로 실행할 때는 시스템에 설치된 ffmpeg를 사용합니다.
+
 ```bash
 brew install ffmpeg   # ffmpeg, ffprobe 필요
 cargo run --release              # 또는
 cargo run --release -- 영상.mp4  # 파일 바로 열기
 ```
+
+앱은 ffmpeg를 다음 순서로 찾습니다: 실행 파일 옆 `ffmpeg/` 폴더 → 실행 파일 옆 → `.app/Contents/Resources/ffmpeg/` → `PATH` → Homebrew 경로.
+
+## 배포본 만들기 (ffmpeg 동봉)
+
+**macOS (Apple Silicon)**: FFmpeg·x264·x265를 공식 소스에서 정적으로 빌드해 `.app`에 넣습니다. macOS 12 이상에서 실행됩니다.
+
+```bash
+brew install cmake pkgconf
+./scripts/build-ffmpeg-macos.sh   # build/ffmpeg-macos/ 에 ffmpeg, ffprobe 생성 (수 분)
+./scripts/package-macos.sh        # dist/Video Crop.app, dist/Video-Crop-<버전>-macos-arm64.zip
+```
+
+**Windows (x64)**: [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds)의 정적 GPL 빌드를 받아 `video-crop.exe` 옆 `ffmpeg\` 폴더에 넣습니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1   # dist\Video-Crop-<버전>-windows-x64.zip
+```
+
+동봉한 ffmpeg의 버전, 빌드 옵션, 소스 위치는 배포본 안의 `ffmpeg/BUILD_INFO.txt`에 기록됩니다.
 
 ## 기능
 - 비율 프리셋: 자유 · 원본 · 1:1 · 4:5 · 4:3 · 3:4 · 16:9 · 9:16 · 3:2 · 2:3 · 21:9 · 커스텀(a:b, ⇄ 뒤집기)

@@ -162,15 +162,26 @@ fn main() -> wry::Result<()> {
         builder.build_gtk(window.default_vbox().unwrap())?
     };
 
+    match &ffmpeg_bin {
+        Some(ffmpeg) if ffprobe_bin.is_some() => {
+            let bundled = ffmpeg::is_bundled(ffmpeg);
+            eprintln!("ffmpeg: {} ({})", ffmpeg.display(), if bundled { "bundled" } else { "system" });
+            let _ = proxy.send_event(UserEvent::ToJs(json!({
+                "type": "tools",
+                "bundled": bundled,
+                "encoders": ffmpeg::available_encoders(ffmpeg),
+            })));
+        }
+        _ => {
+            let _ = proxy.send_event(UserEvent::ToJs(json!({
+                "type": "error",
+                "message": "ffmpeg/ffprobe 를 찾을 수 없습니다. 동봉 버전을 받거나 시스템에 설치하세요 (macOS: brew install ffmpeg)"
+            })));
+        }
+    }
     // 커맨드라인 인자로 파일을 넘긴 경우 바로 열기
     if let Some(arg) = std::env::args_os().nth(1) {
         let _ = proxy.send_event(UserEvent::Load(arg.into()));
-    }
-    if ffmpeg_bin.is_none() || ffprobe_bin.is_none() {
-        let _ = proxy.send_event(UserEvent::ToJs(json!({
-            "type": "error",
-            "message": "ffmpeg/ffprobe 를 찾을 수 없습니다. macOS: brew install ffmpeg"
-        })));
     }
 
     event_loop.run(move |event, _, control_flow| {

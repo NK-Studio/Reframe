@@ -8,18 +8,50 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// 앱과 함께 배포한 ffmpeg 를 먼저 찾고, 없으면 시스템에 설치된 것을 쓴다.
 /// Finder 등에서 실행하면 셸 PATH(Homebrew 경로)가 없으므로 흔한 설치 경로도 함께 찾는다.
 pub fn find_tool(name: &str) -> Option<PathBuf> {
     let exe = if cfg!(windows) { format!("{name}.exe") } else { name.to_string() };
-    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
-        .map(|p| std::env::split_paths(&p).collect())
-        .unwrap_or_default();
+    let mut dirs = bundled_dirs();
+    dirs.extend(
+        std::env::var_os("PATH")
+            .map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
+            .unwrap_or_default(),
+    );
     dirs.extend(
         ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/opt/local/bin"]
             .iter()
             .map(PathBuf::from),
     );
     dirs.into_iter().map(|d| d.join(&exe)).find(|p| p.is_file())
+}
+
+/// 동봉 위치: 실행 파일 옆, `ffmpeg/` 하위 폴더, macOS 앱 번들의 `Contents/Resources`
+fn bundled_dirs() -> Vec<PathBuf> {
+    let Some(exe_dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)) else {
+        return Vec::new();
+    };
+    let resources = exe_dir.join("../Resources");
+    vec![exe_dir.join("ffmpeg"), exe_dir.clone(), resources.join("ffmpeg"), resources]
+}
+
+/// 동봉한 ffmpeg 인지 (UI 표시용)
+pub fn is_bundled(path: &Path) -> bool {
+    let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let tool_dir = path.parent().map(canon);
+    bundled_dirs().iter().any(|d| Some(canon(d)) == tool_dir)
+}
+
+/// 이 ffmpeg 에서 쓸 수 있는 인코더를 UI 코덱 키("x264" 등)로 돌려준다.
+pub fn available_encoders(ffmpeg: &Path) -> Vec<&'static str> {
+    let out = Command::new(ffmpeg).args(["-hide_banner", "-encoders"]).output();
+    let list = out.map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
+    let has = |enc: &str| list.lines().any(|l| l.split_whitespace().nth(1) == Some(enc));
+    [("x264", "libx264"), ("x265", "libx265"), ("vt264", "h264_videotoolbox"), ("vt265", "hevc_videotoolbox")]
+        .into_iter()
+        .filter(|(_, enc)| has(enc))
+        .map(|(key, _)| key)
+        .collect()
 }
 
 #[derive(Debug, Clone, Serialize)]
