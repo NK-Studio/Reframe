@@ -31,7 +31,7 @@ Expand-Archive $Cache -DestinationPath build
 # 2) 배포 폴더 구성: Reframe.exe 옆 ffmpeg\ 폴더에 둔다 (앱이 이 위치를 먼저 찾는다)
 if (Test-Path $Out) { Remove-Item -Recurse -Force $Out }
 New-Item -ItemType Directory -Force "$Out\ffmpeg" | Out-Null
-Copy-Item target\release\Reframe.exe $Out
+Copy-Item target\release\Reframe.exe, target\release\reframe-cli.exe $Out
 Copy-Item LICENSE, THIRD_PARTY_NOTICES.md $Out
 Copy-Item ui\fonts\OFL.txt "$Out\LICENSE-IBMPlexSansKR.txt"
 Copy-Item "$Extract\bin\ffmpeg.exe", "$Extract\bin\ffprobe.exe" "$Out\ffmpeg"

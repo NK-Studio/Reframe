@@ -1,7 +1,6 @@
 // 릴리스 빌드에서 Windows 콘솔 창 숨김
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod ffmpeg;
 mod media;
 
 use std::borrow::Cow;
@@ -17,7 +16,8 @@ use tao::window::WindowBuilder;
 use wry::http::{Request, Response};
 use wry::{DragDropEvent, WebViewBuilder};
 
-use ffmpeg::{ExportOptions, ProbeInfo};
+use reframe_core::ffmpeg::{self, ExportOptions, ProbeInfo};
+use reframe_core::output::{output_path, output_subdir};
 
 const INDEX_HTML: &str = include_str!("../ui/index.html");
 /// UI 폰트 (IBM Plex Sans KR, SIL OFL 1.1 — ui/fonts/OFL.txt). 실행 파일에 넣어 오프라인에서도 같은 모양으로 보인다
@@ -82,36 +82,6 @@ struct ExportRequest {
     overwrite: bool,
     #[serde(flatten)]
     opts: ExportOptions,
-}
-
-/// 저장 폴더 아래 Output 폴더를 쓴다. 없으면 만든다.
-fn output_subdir(dir: &std::path::Path) -> Result<PathBuf, String> {
-    if !dir.is_dir() {
-        return Err(format!("저장 폴더가 없습니다: {}", dir.display()));
-    }
-    let sub = dir.join("Output");
-    std::fs::create_dir_all(&sub).map_err(|e| format!("Output 폴더를 만들 수 없습니다: {e}"))?;
-    Ok(sub)
-}
-
-/// 폴더 + 이름으로 출력 경로를 만든다. 확장자는 형식(ext)을 따른다
-fn output_path(dir: &std::path::Path, name: &str, ext: &str) -> Result<PathBuf, String> {
-    let name = name.trim();
-    let suffix = format!(".{ext}");
-    let stem = match name.len().checked_sub(suffix.len()) {
-        Some(i) if name.is_char_boundary(i) && name[i..].eq_ignore_ascii_case(&suffix) => &name[..i],
-        _ => name,
-    };
-    if stem.is_empty() {
-        return Err("파일 이름을 입력하세요".into());
-    }
-    if stem.contains(['/', '\\', ':']) {
-        return Err("파일 이름에 / \\ : 는 쓸 수 없습니다".into());
-    }
-    if !dir.is_dir() {
-        return Err(format!("저장 폴더가 없습니다: {}", dir.display()));
-    }
-    Ok(dir.join(format!("{stem}.{ext}")))
 }
 
 #[derive(Default)]
@@ -410,7 +380,7 @@ fn handle_event(
             }
 
             let args = ffmpeg::build_args(&input, &output, &opts, &info);
-            send(proxy, json!({"type": "exportStart", "command": format!("ffmpeg {}", shell_join(&args))}));
+            send(proxy, json!({"type": "exportStart", "command": format!("ffmpeg {}", ffmpeg::shell_join(&args))}));
 
             let proxy = proxy.clone();
             let job = job.clone();
@@ -459,23 +429,9 @@ fn reveal(path: &std::path::Path) {
     let _ = std::process::Command::new("xdg-open").arg(path.parent().unwrap_or(path)).spawn();
 }
 
-/// 사용자에게 보여줄 명령어 문자열 (복사해서 터미널에서 재현 가능하도록)
-fn shell_join(args: &[String]) -> String {
-    args.iter()
-        .map(|a| {
-            if a.chars().all(|c| c.is_ascii_alphanumeric() || "-_./:=+,".contains(c)) {
-                a.clone()
-            } else {
-                format!("'{}'", a.replace('\'', r"'\''"))
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{app_asset, output_path, output_subdir, IpcMsg, INDEX_HTML};
+    use super::{app_asset, output_subdir, IpcMsg, INDEX_HTML};
     use crate::ffmpeg::Format;
 
     #[test]
@@ -495,19 +451,6 @@ mod tests {
         assert_eq!((req.opts.gif_fps, req.opts.gif_width), (12, Some(480)));
         let msg = r#"{"cmd":"pickFolder","current":null}"#;
         assert!(matches!(serde_json::from_str::<IpcMsg>(msg), Ok(IpcMsg::PickFolder { current: None })));
-    }
-
-    #[test]
-    fn output_names() {
-        let dir = std::env::temp_dir();
-        assert_eq!(output_path(&dir, "a_crop", "mp4").unwrap(), dir.join("a_crop.mp4"));
-        assert_eq!(output_path(&dir, " 영상.MP4 ", "mp4").unwrap(), dir.join("영상.mp4"));
-        assert_eq!(output_path(&dir, "로그인", "mp4").unwrap(), dir.join("로그인.mp4"));
-        assert_eq!(output_path(&dir, "움짤.GIF", "gif").unwrap(), dir.join("움짤.gif"));
-        assert_eq!(output_path(&dir, "a.mp4", "gif").unwrap(), dir.join("a.mp4.gif"));
-        assert!(output_path(&dir, ".mp4", "mp4").is_err());
-        assert!(output_path(&dir, "a/b", "mp4").is_err());
-        assert!(output_path(&dir.join("no-such-dir-xyz"), "a", "mp4").is_err());
     }
 
     #[test]

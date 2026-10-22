@@ -15,14 +15,14 @@ ZIP="$ROOT/dist/Reframe-$VERSION-macos-$(uname -m).zip"
 cd "$ROOT"
 # 바이너리에 빌드 PC 경로(홈 폴더, 저장소 위치)가 남지 않게 바꿔 기록한다
 RUSTFLAGS="--remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$ROOT=/src --remap-path-prefix=$HOME=/home" cargo build --release
-if strings target/release/Reframe | grep -q "$HOME"; then
+if strings target/release/Reframe target/release/reframe-cli | grep -q "$HOME"; then
     echo "오류: 바이너리에 홈 폴더 경로가 남아 있습니다" >&2
     exit 1
 fi
 
 rm -rf "$APP" "$ZIP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/ffmpeg"
-cp target/release/Reframe "$APP/Contents/MacOS/"
+cp target/release/Reframe target/release/reframe-cli "$APP/Contents/MacOS/"
 cp "$FFMPEG_DIR"/{ffmpeg,ffprobe,BUILD_INFO.txt,LICENSE-ffmpeg.txt} "$APP/Contents/Resources/ffmpeg/"
 cp LICENSE THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/"
 cp ui/fonts/OFL.txt "$APP/Contents/Resources/LICENSE-IBMPlexSansKR.txt"
@@ -49,7 +49,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
 EOF
 
 # Apple Silicon 은 서명 없는 바이너리를 실행하지 않으므로 ad-hoc 서명 (안쪽부터)
-codesign --force --sign - "$APP/Contents/Resources/ffmpeg/ffmpeg" "$APP/Contents/Resources/ffmpeg/ffprobe"
+codesign --force --sign - "$APP/Contents/Resources/ffmpeg/ffmpeg" "$APP/Contents/Resources/ffmpeg/ffprobe" "$APP/Contents/MacOS/reframe-cli"
 codesign --force --sign - "$APP"
 codesign --verify --deep --strict "$APP"
 

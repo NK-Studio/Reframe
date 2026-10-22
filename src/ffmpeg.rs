@@ -42,7 +42,9 @@ pub fn find_tool(name: &str) -> Option<PathBuf> {
 
 /// 동봉 위치: 실행 파일 옆, `ffmpeg/` 하위 폴더, macOS 앱 번들의 `Contents/Resources`
 fn bundled_dirs() -> Vec<PathBuf> {
-    let Some(exe_dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)) else {
+    // 심볼릭 링크(예: /usr/local/bin/reframe-cli → 앱 번들 안)로 실행해도 번들 위치를 찾도록 실제 경로로 푼다
+    let exe = std::env::current_exe().map(|p| p.canonicalize().unwrap_or(p));
+    let Some(exe_dir) = exe.ok().and_then(|p| p.parent().map(Path::to_path_buf)) else {
         return Vec::new();
     };
     let resources = exe_dir.join("../Resources");
@@ -321,6 +323,20 @@ pub fn cancel(job: &Job) {
         let _ = c.kill();
         let _ = c.wait();
     }
+}
+
+/// 사용자에게 보여줄 명령어 문자열 (복사해서 터미널에서 재현 가능하도록)
+pub fn shell_join(args: &[String]) -> String {
+    args.iter()
+        .map(|a| {
+            if a.chars().all(|c| c.is_ascii_alphanumeric() || "-_./:=+,".contains(c)) {
+                a.clone()
+            } else {
+                format!("'{}'", a.replace('\'', r"'\''"))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[cfg(test)]

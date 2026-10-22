@@ -61,6 +61,31 @@ python scripts/make-icons.py
 - 폰 영상 회전 메타데이터 반영, 가로·세로 짝수 자동 보정
 - WebView 가 재생 못 하는 형식(AVI, 일부 MKV)은 ffmpeg 정지 프레임으로 미리보기
 
+## 명령줄 도구 (reframe-cli)
+
+창 없이 크롭·내보내기를 합니다. GUI와 같은 ffmpeg와 인코딩 설정을 씁니다.
+
+- Windows: zip 안의 `reframe-cli.exe` (`Reframe.exe` 옆)
+- macOS: `Reframe.app/Contents/MacOS/reframe-cli`. PATH에 링크해 두면 편합니다.
+
+```bash
+sudo ln -s /Applications/Reframe.app/Contents/MacOS/reframe-cli /usr/local/bin/reframe-cli
+```
+
+```bash
+reframe-cli info 영상.mp4                          # 크기, 길이, fps, 코덱 (--json)
+reframe-cli codecs                                 # 쓸 수 있는 MP4 코덱
+reframe-cli crop 영상.mp4 --rect 420,0,1080,1920   # → 영상_crop.mp4
+reframe-cli crop 영상.mp4 --rect 0,0,640,360 -o 움짤.gif --gif-fps 20 --gif-width 480
+reframe-cli crop 영상.mp4 --rect 0,0,1080,1080 -c x265 -q 85 --audio none -y
+reframe-cli crop 영상.mp4 --rect 0,0,1080,1080 --dry-run   # ffmpeg 명령만 출력
+```
+
+- `--rect x,y,w,h`: 회전을 반영한 화면 기준 픽셀. 가로·세로는 짝수로 보정됩니다.
+- 출력 파일이 이미 있으면 실패합니다. 덮어쓰려면 `-y`를 붙이세요.
+- 코덱을 생략하면 `vt264`(macOS 하드웨어), 없으면 `x264`를 씁니다.
+- 성공하면 출력 경로를 stdout에 출력하고 종료 코드 0을 돌려줍니다. 실패하면 stderr에 오류를 쓰고 1을 돌려줍니다. 터미널에서는 진행률을 stderr에 표시합니다(`--quiet`로 끔). Ctrl+C를 누르면 ffmpeg도 함께 멈춥니다.
+
 ## 테스트
 ```bash
 cargo test
