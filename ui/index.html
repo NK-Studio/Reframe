@@ -58,7 +58,19 @@
   .time { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 110px; text-align: right; }
 
   .side { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 18px; }
-  .sec h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .side { gap: 0; }
+  details.sec { font-size: 13px; color: var(--text); border-bottom: 1px solid var(--line); }
+  details.sec > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 11px 2px;
+    font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  details.sec > summary::-webkit-details-marker { display: none; }
+  details.sec > summary::before { content: '›'; font-size: 15px; line-height: 1; width: 10px; transition: transform .15s; }
+  details.sec[open] > summary::before { transform: rotate(90deg); }
+  details.sec > summary:hover { color: var(--text); }
+  details.sec .sum { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 12px; color: var(--text); opacity: .75; }
+  details.sec[open] .sum { display: none; }
+  details.sec > .body { padding: 2px 2px 14px; }
+  .export details.sec { border-bottom: 0; }
   .ratios { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .ratios button { padding: 7px 0; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; }
   .ratios button .shape { border: 1.5px solid currentColor; border-radius: 2px; }
@@ -78,7 +90,7 @@
   .seg button { flex: 1; border: 0; border-radius: 0; background: transparent; padding: 5px 0; }
   .seg button.on { background: var(--accent); color: white; }
   input[type=range].q { width: 100%; accent-color: var(--accent); }
-  .export { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
+  .export { margin-top: auto; padding-top: 4px; display: flex; flex-direction: column; gap: 8px; }
   .export .primary { padding: 10px; font-size: 14px; }
   .bar { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; display: none; }
   .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
@@ -122,8 +134,9 @@
   </div>
 
   <div class="side">
-    <div class="sec">
-      <h3>비율</h3>
+    <details class="sec" data-sec="ratio" open>
+      <summary><span class="t">비율</span><span class="sum" id="sum-ratio"></span></summary>
+      <div class="body">
       <div class="ratios" id="ratios"></div>
       <div class="row custom" id="customRow">
         <input type="number" id="customA" min="1" value="5" title="가로">
@@ -131,10 +144,12 @@
         <input type="number" id="customB" min="1" value="4" title="세로">
         <button id="swapBtn" title="가로/세로 뒤집기">⇄</button>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="sec">
-      <h3>크롭 영역 (원본 픽셀)</h3>
+    <details class="sec" data-sec="crop" open>
+      <summary><span class="t">크롭 영역</span><span class="sum" id="sum-crop"></span></summary>
+      <div class="body">
       <div class="row">
         <label><span class="scrub" data-for="cx" title="좌우로 드래그해서 조절">X</span><input type="number" id="cx" min="0"></label>
         <label><span class="scrub" data-for="cy" title="좌우로 드래그해서 조절">Y</span><input type="number" id="cy" min="0"></label>
@@ -152,10 +167,12 @@
         <button id="maxBtn" style="flex:1">최대 크기</button>
       </div>
       <p class="muted" style="margin:8px 0 0">드래그로 이동 · 모서리로 크기 조절<br>방향키 1px · Shift+방향키 10px 이동<br>숫자 칸: 입력 즉시 반영 · ↑↓ · 라벨 드래그</p>
-    </div>
+      </div>
+    </details>
 
-    <div class="sec">
-      <h3>출력</h3>
+    <details class="sec" data-sec="output">
+      <summary><span class="t">출력</span><span class="sum" id="sum-output"></span></summary>
+      <div class="body">
       <div class="row">
         <label>출력 가로 (비우면 크롭 크기 그대로)<input type="number" id="outW" min="2" placeholder="예: 1080"></label>
       </div>
@@ -183,16 +200,20 @@
           <button data-v="none">제거</button>
         </div>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="sec">
-      <h3>원본 정보</h3>
+    <details class="sec" data-sec="info">
+      <summary><span class="t">원본 정보</span><span class="sum" id="sum-info"></span></summary>
+      <div class="body">
       <div class="info" id="info"><span>—</span><span></span></div>
-    </div>
+      </div>
+    </details>
 
     <div class="export">
-      <div class="sec">
-        <h3>저장</h3>
+      <details class="sec" data-sec="save" open>
+        <summary><span class="t">저장</span><span class="sum" id="sum-save"></span></summary>
+        <div class="body">
         <div class="row">
           <label>파일 이름
             <div class="row"><input type="text" id="outName" spellcheck="false" placeholder="파일 이름" disabled><span class="muted">.mp4</span></div>
@@ -204,7 +225,8 @@
           </label>
         </div>
         <p class="muted" id="sameWarn" style="display:none;margin:6px 0 0;color:#f0b04f">원본과 같은 파일입니다. 저장 위치나 이름을 바꿔주세요.</p>
-      </div>
+        </div>
+      </details>
       <div class="bar" id="bar"><i></i></div>
       <div class="status" id="status"></div>
       <div class="row">
@@ -280,6 +302,7 @@ function setRatio(k) {
   document.querySelectorAll('#ratios button').forEach(b => b.classList.toggle('on', b.dataset.k === k));
   $('customRow').classList.toggle('on', k === 'custom');
   if (st.info) applyRatio();
+  updateSummaries();
 }
 
 // 현재 크롭의 중심을 유지하면서 비율에 맞는 최대 영역으로
@@ -352,7 +375,30 @@ function updateOutSize() {
   } else {
     $('outSize').textContent = `최종 출력: ${r.w} × ${r.h}`;
   }
+  updateSummaries();
 }
+
+// ---- 접힌 섹션에 보여줄 한 줄 요약 ----
+const CODEC_SHORT = { x264: 'H.264', x265: 'H.265', vt264: 'H.264 HW', vt265: 'H.265 HW' };
+function updateSummaries() {
+  const def = RATIOS.find(r => r.k === st.ratioKey);
+  $('sum-ratio').textContent = st.ratioKey === 'custom' ? `커스텀 ${$('customA').value}:${$('customB').value}` : (def?.label ?? '');
+  if (!st.info) return;
+  const r = rounded();
+  $('sum-crop').textContent = `${r.w} × ${r.h}`;
+  $('sum-output').textContent = `${$('outSize').textContent.replace('최종 출력: ', '').replace(' (리사이즈)', '')} · ${CODEC_SHORT[$('codec').value] ?? ''}`;
+  $('sum-info').textContent = `${st.info.width} × ${st.info.height} · ${Math.round(st.info.fps)}fps`;
+  $('sum-save').textContent = `${$('outName').value}.mp4`;
+}
+
+// 섹션 열림/닫힘 상태 기억 (브라우저 저장소를 못 쓰면 기본값으로)
+document.querySelectorAll('details.sec').forEach((d) => {
+  const key = 'vc.sec.' + d.dataset.sec;
+  try { const v = localStorage.getItem(key); if (v !== null) d.open = v === '1'; } catch {}
+  d.addEventListener('toggle', () => { try { localStorage.setItem(key, d.open ? '1' : '0'); } catch {} });
+});
+['codec', 'outName', 'customA', 'customB'].forEach(id => $(id).addEventListener('input', updateSummaries));
+$('codec').addEventListener('change', updateSummaries);
 
 // ---- 드래그 / 리사이즈 ----
 const MIN = 16;
