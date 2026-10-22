@@ -1,103 +1,44 @@
 # Reframe
+화면 녹화 영상에서 보여 주고 싶은 부분만 잘라 문서에 바로 넣을 수 있는 짧은 영상이나 움짤(GIF)로 만들어 주는 앱입니다.
 
-ffmpeg 기반 영상 **화면 영역(가로·세로) 크롭** 도구. Rust + [wry](https://github.com/tauri-apps/wry) / tao.
+<img width="2542" height="1676" alt="image" src="https://github.com/user-attachments/assets/fdba91d2-9cd8-49df-af67-4b125a987884" />
 
-## 실행
+# 왜 만들었나요?
+사용 설명서나 기능 안내 문서를 쓰다 보면 "여기를 누르면 이렇게 됩니다"를 글보다 **움직이는 화면으로 보여 주는 편이** 훨씬 쉬울 때가 많습니다.  
+그런데 화면을 녹화하면 이런 일이 생깁니다.
 
-[릴리스](https://github.com/NK-Studio/video-crop/releases)에서 설치 프로그램을 받아 실행하면 됩니다. ffmpeg가 들어 있어 따로 설치할 필요가 없습니다.
+- 바탕화면, 작업 표시줄, 다른 창까지 **쓸데없는** 부분이 같이 찍힙니다.
+- 정작 보여 주고 싶은 버튼이나 메뉴는 너무 작게 보입니다.
+- 영상 파일은 문서에 넣기 번거롭고, 움짤로 바꾸려면 **다른 프로그램**이나 **사이트**를 또 찾아야 합니다.
 
-- **Windows**: `Reframe-<버전>-windows-x64.msi` → `Program Files\Reframe`에 설치되고, 시작 메뉴에 등록되며, `reframe-cli`가 PATH에 추가됩니다. 설정 > 앱에서 제거할 수 있습니다.
-- **macOS**: `Reframe-<버전>-macos-arm64.pkg` → `/Applications/Reframe.app`에 설치되고, `/usr/local/bin/reframe-cli`가 링크됩니다. 서명하지 않은 설치 프로그램이라 처음에는 우클릭 > 열기로 실행해야 합니다.
-- 설치 없이 쓰려면 같은 버전의 zip을 받으세요.
+Reframe은 이 과정을 하나의 앱에서, **몇 번의 클릭으로 끝**내려고 만들었습니다.
 
-소스에서 바로 실행할 때는 시스템에 설치된 ffmpeg를 사용합니다.
+## 설치
 
-```bash
-brew install ffmpeg   # ffmpeg, ffprobe 필요
-cargo run --release              # 또는
-cargo run --release -- 영상.mp4  # 파일 바로 열기
-```
+[릴리스](https://github.com/NK-Studio/video-crop/releases)에서 설치 프로그램을 받아 실행하면 됩니다. 다른 프로그램을 따로 설치할 필요는 없습니다.
 
-**Windows**: 배포본과 같은 GPL 빌드 ffmpeg를 `target\debug\ffmpeg\`, `target\release\ffmpeg\`에 받아 둡니다. 시스템 ffmpeg가 LGPL 빌드(예: `--disable-libx264`)면 H.264/H.265 소프트웨어 코덱이 목록에서 빠지므로 이 방법을 권장합니다. `cargo clean` 후에는 다시 실행하세요.
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\fetch-ffmpeg-windows.ps1
-cargo run --release
-```
-
-앱은 ffmpeg를 다음 순서로 찾습니다: 실행 파일 옆 `ffmpeg/` 폴더 → 실행 파일 옆 → `.app/Contents/Resources/ffmpeg/` → `PATH` → Homebrew 경로.
-
-## 배포본 만들기 (ffmpeg 동봉)
-
-**macOS (Apple Silicon)**: FFmpeg·x264·x265·SVT-AV1을 공식 소스에서 정적으로 빌드해 `.app`에 넣습니다. macOS 12 이상에서 실행됩니다.
-
-```bash
-brew install cmake pkgconf
-./scripts/build-ffmpeg-macos.sh   # build/ffmpeg-macos/ 에 ffmpeg, ffprobe 생성 (수 분)
-./scripts/package-macos.sh        # dist/Reframe.app, dist/Reframe-<버전>-macos-arm64.zip, .pkg
-```
-
-**Windows (x64)**: [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds)의 정적 GPL 빌드를 받아 `Reframe.exe` 옆 `ffmpeg\` 폴더에 넣습니다.
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1   # dist\Reframe-<버전>-windows-x64.zip, .msi (WiX 사용, .NET SDK 필요)
-```
-
-동봉한 ffmpeg의 버전, 빌드 옵션, 소스 위치는 배포본 안의 `ffmpeg/BUILD_INFO.txt`에 기록됩니다.
-
-**앱 아이콘**: 원본은 `assets/icon/reframe.prism`(Prism 문서)입니다. 고친 뒤 `reframe-1024.png`로 내보내고 아래를 실행하면 Windows `.ico`, macOS `.icns`, 창 아이콘, 정보 창 로고가 다시 만들어집니다 (Pillow 필요).
-
-```bash
-python scripts/make-icons.py
-```
+- **Windows**: `Reframe-<버전>-windows-x64.msi`
+- **macOS**: `Reframe-<버전>-macos-arm64.pkg` (처음 실행할 때는 우클릭 > 열기)
 
 ## 기능
-- 비율 프리셋: 자유 · 원본 · 1:1 · 4:5 · 4:3 · 3:4 · 16:9 · 9:16 · 3:2 · 2:3 · 21:9 · 커스텀(a:b, ⇄ 뒤집기)
-- 드래그 이동 / 8방향 핸들 리사이즈 (비율 고정 유지), 방향키 미세 이동, 3분할 가이드
-- X/Y/너비/높이 숫자 입력 즉시 반영 (↑↓ · 라벨 드래그로 조절), 가로/세로로 늘리기, 가운데 정렬, 최대 크기
-- [크롭 내보내기] → 내보내기 창에서 형식(MP4 / GIF)과 형식별 설정, 파일 이름·저장 폴더 지정
-  - 덮어쓰기 확인, 원본 덮어쓰기 방지
-  - "Output 폴더에 저장": 저장 폴더 아래 `Output` 폴더에 내보내기 (없으면 생성, 설정 기억)
-- MP4 코덱: H.264/H.265 하드웨어(macOS VideoToolbox, 기본값) · H.264/H.265 소프트웨어(x264/x265) · AV1(SVT-AV1)
-- MP4 오디오: 자동(mp4 호환이면 복사, 아니면 AAC) / 복사 / AAC / 제거
-- GIF: 초당 프레임(10/15/20/30), 가로 크기 축소, 영상에서 뽑은 팔레트로 변환 (무한 반복, 소리 없음)
-- 진행률 · 취소 · 실행한 ffmpeg 명령어 표시 · 완료 후 Finder 에서 보기
-- 폰 영상 회전 메타데이터 반영, 가로·세로 짝수 자동 보정
-- WebView 가 재생 못 하는 형식(AVI, 일부 MKV)은 ffmpeg 정지 프레임으로 미리보기
 
-## 명령줄 도구 (reframe-cli)
+- **영역 선택**: 마우스로 틀을 끌어 원하는 부분을 고릅니다. 1:1, 16:9, 9:16 같은 비율을 고를 수 있고, 위치와 크기를 숫자로 직접 넣을 수도 있습니다.
+- **GIF 내보내기**: 문서에 바로 넣을 수 있는 움짤로 저장합니다. 초당 프레임 수와 크기를 조절해 용량을 줄일 수 있습니다.
+- **MP4 내보내기**: 화질이 좋고 용량이 작은 영상으로 저장합니다.
+- **안전한 저장**: 원본을 덮어쓰지 않으며, 결과물을 `Output` 폴더에 모아 둘 수 있습니다.
+- **CLI 지원**: 앱을 열지 않고 터미널에서 `reframe-cli` 명령으로 자르고 내보낼 수 있습니다. 스크립트에 넣어 여러 파일을 한 번에 처리할 수도 있습니다. ([사용법](#명령줄-도구))
 
-창 없이 크롭·내보내기를 합니다. GUI와 같은 ffmpeg와 인코딩 설정을 씁니다.
+## 명령줄 도구
 
-설치 프로그램으로 설치하면 터미널에서 바로 `reframe-cli`를 쓸 수 있습니다. zip으로 받았다면 다음 위치에 있습니다.
-
-- Windows: `Reframe.exe` 옆의 `reframe-cli.exe`
-- macOS: `Reframe.app/Contents/MacOS/reframe-cli`. 아래처럼 PATH에 링크해 두면 편합니다.
+창을 띄우지 않고 터미널에서도 자를 수 있습니다. 설치 프로그램으로 설치하면 바로 쓸 수 있습니다.
 
 ```bash
-sudo ln -s /Applications/Reframe.app/Contents/MacOS/reframe-cli /usr/local/bin/reframe-cli
+reframe-cli crop 영상.mp4 --rect 0,0,1080,1080              # MP4로 저장
+reframe-cli crop 영상.mp4 --rect 0,0,640,360 -o 움짤.gif     # GIF로 저장
 ```
 
-```bash
-reframe-cli info 영상.mp4                          # 크기, 길이, fps, 코덱 (--json)
-reframe-cli codecs                                 # 쓸 수 있는 MP4 코덱
-reframe-cli crop 영상.mp4 --rect 420,0,1080,1920   # → 영상_crop.mp4
-reframe-cli crop 영상.mp4 --rect 0,0,640,360 -o 움짤.gif --gif-fps 20 --gif-width 480
-reframe-cli crop 영상.mp4 --rect 0,0,1080,1080 -c x265 -q 85 --audio none -y
-reframe-cli crop 영상.mp4 --rect 0,0,1080,1080 --dry-run   # ffmpeg 명령만 출력
-```
-
-- `--rect x,y,w,h`: 회전을 반영한 화면 기준 픽셀. 가로·세로는 짝수로 보정됩니다.
-- 출력 파일이 이미 있으면 실패합니다. 덮어쓰려면 `-y`를 붙이세요.
-- 코덱을 생략하면 `vt264`(macOS 하드웨어), 없으면 `x264`를 씁니다.
-- 성공하면 출력 경로를 stdout에 출력하고 종료 코드 0을 돌려줍니다. 실패하면 stderr에 오류를 쓰고 1을 돌려줍니다. 터미널에서는 진행률을 stderr에 표시합니다(`--quiet`로 끔). Ctrl+C를 누르면 ffmpeg도 함께 멈춥니다.
-
-## 테스트
-```bash
-cargo test
-VC_TEST_DIR=<샘플 폴더(land.mp4, rot.mov, odd.avi)> cargo test -- --ignored --nocapture
-```
+`--rect`는 `x,y,너비,높이`(픽셀)입니다. 다른 옵션은 `reframe-cli --help`에서 확인할 수 있습니다.
 
 ## 라이선스
 
-[GPL-3.0](LICENSE). FFmpeg 등 외부 소프트웨어의 라이선스는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)를 참고하세요.
+[GPL-3.0](LICENSE). 외부 소프트웨어의 라이선스는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)를 참고하세요.
