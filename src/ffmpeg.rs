@@ -47,7 +47,13 @@ pub fn available_encoders(ffmpeg: &Path) -> Vec<&'static str> {
     let out = Command::new(ffmpeg).args(["-hide_banner", "-encoders"]).output();
     let list = out.map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
     let has = |enc: &str| list.lines().any(|l| l.split_whitespace().nth(1) == Some(enc));
-    [("x264", "libx264"), ("x265", "libx265"), ("vt264", "h264_videotoolbox"), ("vt265", "hevc_videotoolbox")]
+    [
+        ("vt264", "h264_videotoolbox"),
+        ("vt265", "hevc_videotoolbox"),
+        ("x264", "libx264"),
+        ("x265", "libx265"),
+        ("av1", "libsvtav1"),
+    ]
         .into_iter()
         .filter(|(_, enc)| has(enc))
         .map(|(key, _)| key)
@@ -150,7 +156,7 @@ pub struct ExportOptions {
     pub h: u32,
     /// 출력 가로 크기 (None 이면 크롭 크기 그대로)
     pub out_width: Option<u32>,
-    /// "x264" | "x265" | "vt264" | "vt265"
+    /// "x264" | "x265" | "vt264" | "vt265" | "av1"
     pub codec: String,
     /// 0~100, 높을수록 고화질
     pub quality: u32,
@@ -189,6 +195,8 @@ pub fn build_args(input: &Path, output: &Path, o: &ExportOptions, info: &ProbeIn
         "x265" => a.extend(["-c:v", "libx265", "-preset", "medium", "-crf", &(crf + 4).to_string(), "-tag:v", "hvc1"].map(String::from)),
         "vt264" => a.extend(["-c:v", "h264_videotoolbox", "-q:v", &(q.max(1.0) as u32).to_string()].map(String::from)),
         "vt265" => a.extend(["-c:v", "hevc_videotoolbox", "-q:v", &(q.max(1.0) as u32).to_string(), "-tag:v", "hvc1"].map(String::from)),
+        // SVT-AV1: CRF 0~63 (100 → 20, 75 → 28, 50 → 36), preset 8 은 속도·화질 균형
+        "av1" => a.extend(["-c:v", "libsvtav1", "-preset", "8", "-crf", &((52.0 - q * 0.32).round() as u32).to_string()].map(String::from)),
         _ => a.extend(["-c:v", "libx264", "-preset", "medium", "-crf", &crf.to_string()].map(String::from)),
     }
     a.extend(["-pix_fmt", "yuv420p"].map(String::from));
@@ -263,6 +271,18 @@ pub fn cancel(job: &Job) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn av1_args() {
+        let info = ProbeInfo {
+            width: 1920, height: 1080, rotation: 0, duration: 1.0, fps: 30.0,
+            video_codec: "h264".into(), audio_codec: Some("aac".into()),
+        };
+        let o = ExportOptions { x: 0, y: 0, w: 608, h: 1080, out_width: None, codec: "av1".into(), quality: 75, audio: "auto".into() };
+        let args = build_args(Path::new("in.mp4"), Path::new("out.mp4"), &o, &info).join(" ");
+        assert!(args.contains("-c:v libsvtav1 -preset 8 -crf 28"), "{args}");
+        assert!(!args.contains("hvc1"));
+    }
 
     /// ffmpeg 이 설치된 환경에서 `VC_TEST_DIR=<샘플 폴더> cargo test -- --ignored` 로 실행
     #[test]

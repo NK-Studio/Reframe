@@ -180,10 +180,15 @@
       <div class="row" style="margin-top:10px">
         <label>코덱
           <select id="codec">
-            <option value="x264">H.264 (libx264) — 호환성 최고</option>
-            <option value="x265">H.265 (libx265) — 용량 작음</option>
-            <option value="vt264">H.264 하드웨어 (macOS) — 빠름</option>
-            <option value="vt265">H.265 하드웨어 (macOS) — 빠름</option>
+            <optgroup label="하드웨어 — 빠름">
+              <option value="vt264">H.264 — 호환성 최고</option>
+              <option value="vt265">H.265 — 용량 작음</option>
+            </optgroup>
+            <optgroup label="소프트웨어 — 느리지만 같은 용량에서 고화질">
+              <option value="x264">H.264 (libx264)</option>
+              <option value="x265">H.265 (libx265)</option>
+              <option value="av1">AV1 (SVT-AV1) — 용량 최소, 최신 기기용</option>
+            </optgroup>
           </select>
         </label>
       </div>
@@ -379,7 +384,7 @@ function updateOutSize() {
 }
 
 // ---- 접힌 섹션에 보여줄 한 줄 요약 ----
-const CODEC_SHORT = { x264: 'H.264', x265: 'H.265', vt264: 'H.264 HW', vt265: 'H.265 HW' };
+const CODEC_SHORT = { x264: 'H.264', x265: 'H.265', vt264: 'H.264 HW', vt265: 'H.265 HW', av1: 'AV1' };
 function updateSummaries() {
   const def = RATIOS.find(r => r.k === st.ratioKey);
   $('sum-ratio').textContent = st.ratioKey === 'custom' ? `커스텀 ${$('customA').value}:${$('customB').value}` : (def?.label ?? '');
@@ -681,10 +686,13 @@ function toast(msg) {
 
 // ---- Rust → JS ----
 // 이 ffmpeg 에 없는 인코더(예: Windows 의 VideoToolbox)는 선택지에서 숨긴다
+// 기본값은 목록의 첫 번째 (Rust 가 하드웨어 H.264 → 소프트웨어 순으로 보낸다)
 function setEncoders(list) {
   const sel = $('codec');
   for (const o of sel.options) o.hidden = o.disabled = !list.includes(o.value);
-  if (sel.selectedOptions[0]?.disabled) sel.value = list[0] ?? '';
+  for (const g of sel.querySelectorAll('optgroup')) g.hidden = [...g.children].every(o => o.hidden);
+  sel.value = list[0] ?? '';
+  updateSummaries();
 }
 
 window.onHost = (m) => {

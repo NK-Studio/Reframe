@@ -18,7 +18,7 @@ cargo run --release -- 영상.mp4  # 파일 바로 열기
 
 ## 배포본 만들기 (ffmpeg 동봉)
 
-**macOS (Apple Silicon)**: FFmpeg·x264·x265를 공식 소스에서 정적으로 빌드해 `.app`에 넣습니다. macOS 12 이상에서 실행됩니다.
+**macOS (Apple Silicon)**: FFmpeg·x264·x265·SVT-AV1을 공식 소스에서 정적으로 빌드해 `.app`에 넣습니다. macOS 12 이상에서 실행됩니다.
 
 ```bash
 brew install cmake pkgconf
@@ -40,7 +40,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1   # dist\Vi
 - X/Y/너비/높이 숫자 입력 즉시 반영 (↑↓ · 라벨 드래그로 조절), 가로/세로로 늘리기, 가운데 정렬, 최대 크기
 - 저장 칸에서 파일 이름(기본: 원본 이름)과 저장 폴더 지정, 덮어쓰기 확인, 원본 덮어쓰기 방지
 - 출력 가로 지정 시 리사이즈 (예: 9:16 + 1080 → 1080×1920)
-- 코덱: H.264/H.265 (소프트웨어) · VideoToolbox 하드웨어 (macOS)
+- 코덱: H.264/H.265 하드웨어(macOS VideoToolbox, 기본값) · H.264/H.265 소프트웨어(x264/x265) · AV1(SVT-AV1)
 - 오디오: 자동(mp4 호환이면 복사, 아니면 AAC) / 복사 / AAC / 제거
 - 진행률 · 취소 · 실행한 ffmpeg 명령어 표시 · 완료 후 Finder 에서 보기
 - 폰 영상 회전 메타데이터 반영, 가로·세로 짝수 자동 보정
