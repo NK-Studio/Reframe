@@ -51,7 +51,16 @@ $BuildConf
 "@ | Set-Content -Encoding utf8 "$Out\ffmpeg\BUILD_INFO.txt"
 
 if (Test-Path $Zip) { Remove-Item $Zip }
-Compress-Archive -Path $Out -DestinationPath $Zip
+# 백신 검사 등으로 방금 복사한 ffmpeg.exe 가 잠시 잠겨 있을 수 있어 몇 번 다시 시도한다
+for ($i = 1; ; $i++) {
+    try { Compress-Archive -Path $Out -DestinationPath $Zip -ErrorAction Stop; break }
+    catch {
+        if ($i -ge 5) { throw }
+        Write-Host "압축 재시도 ($i): $_"
+        if (Test-Path $Zip) { Remove-Item $Zip }
+        Start-Sleep -Seconds 10
+    }
+}
 Write-Host "완료: $Zip"
 
 # 4) 설치 프로그램(MSI): WiX v5 를 build\wix 에 받아 쓴다 (.NET SDK 필요)

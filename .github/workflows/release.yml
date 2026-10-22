@@ -26,12 +26,43 @@ jobs:
 
   macos:
     runs-on: macos-14
+    env:
+      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: brew install cmake pkgconf nasm
       - run: ./scripts/build-ffmpeg-macos.sh
+      # Developer ID 인증서(Application + Installer 를 한 .p12 로)를 임시 키체인에 넣는다. 시크릿이 없으면 ad-hoc 서명
+      - name: Import signing certificates
+        if: env.MACOS_CERT_P12 != ''
+        env:
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          KC="$RUNNER_TEMP/sign.keychain-db"
+          KC_PASS="$(uuidgen)"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KC_PASS" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KC_PASS" "$KC"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
+          security set-key-partition-list -S apple-tool:,apple: -k "$KC_PASS" "$KC"
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          app_id="$(security find-identity -v -p codesigning "$KC" | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)"
+          inst_id="$(security find-identity -v "$KC" | sed -n 's/.*"\(Developer ID Installer: .*\)"/\1/p' | head -1)"
+          [ -n "$app_id" ] && [ -n "$inst_id" ] || { echo "Developer ID Application/Installer 인증서를 찾지 못했습니다"; exit 1; }
+          echo "SIGN_APP_ID=$app_id" >> "$GITHUB_ENV"
+          echo "SIGN_INSTALLER_ID=$inst_id" >> "$GITHUB_ENV"
+          if [ -n "$APPLE_API_KEY" ]; then
+            echo "$APPLE_API_KEY" > "$RUNNER_TEMP/notary.p8"
+            echo "NOTARY_KEY=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
+          fi
       - run: ./scripts/package-macos.sh
+        env:
+          NOTARY_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       - uses: actions/upload-artifact@v4
         with:
           name: macos

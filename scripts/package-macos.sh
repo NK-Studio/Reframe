@@ -48,12 +48,34 @@ cat > "$APP/Contents/Info.plist" <<EOF
 </plist>
 EOF
 
-# Apple Silicon 은 서명 없는 바이너리를 실행하지 않으므로 ad-hoc 서명 (안쪽부터)
-codesign --force --sign - "$APP/Contents/Resources/ffmpeg/ffmpeg" "$APP/Contents/Resources/ffmpeg/ffprobe" "$APP/Contents/MacOS/reframe-cli"
-codesign --force --sign - "$APP"
+# 서명 (안쪽부터). 환경 변수가 있으면 Developer ID 서명 + 공증, 없으면 ad-hoc 서명
+#   SIGN_APP_ID      "Developer ID Application: 이름 (TEAMID)"
+#   SIGN_INSTALLER_ID "Developer ID Installer: 이름 (TEAMID)"
+#   공증(App Store Connect API 키): NOTARY_KEY (.p8 파일 경로), NOTARY_KEY_ID, NOTARY_ISSUER
+INNER=("$APP/Contents/Resources/ffmpeg/ffmpeg" "$APP/Contents/Resources/ffmpeg/ffprobe" "$APP/Contents/MacOS/reframe-cli")
+if [ -n "${SIGN_APP_ID:-}" ]; then
+    # 공증에는 hardened runtime 과 보안 타임스탬프가 필요하다
+    codesign --force --options runtime --timestamp --sign "$SIGN_APP_ID" "${INNER[@]}"
+    codesign --force --options runtime --timestamp --sign "$SIGN_APP_ID" "$APP"
+else
+    # Apple Silicon 은 서명 없는 바이너리를 실행하지 않으므로 최소한 ad-hoc 서명
+    codesign --force --sign - "${INNER[@]}"
+    codesign --force --sign - "$APP"
+fi
 codesign --verify --deep --strict "$APP"
 
+notarize() {
+    [ -n "${NOTARY_KEY:-}" ] || return 0
+    xcrun notarytool submit "$1" --key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER" --wait
+}
+
 ditto -c -k --keepParent "$APP" "$ZIP"
+# 앱을 공증하고 티켓을 붙인 뒤 zip 을 다시 만든다 (오프라인에서도 Gatekeeper 통과)
+if [ -n "${SIGN_APP_ID:-}" ] && [ -n "${NOTARY_KEY:-}" ]; then
+    notarize "$ZIP"
+    xcrun stapler staple "$APP"
+    rm "$ZIP" && ditto -c -k --keepParent "$APP" "$ZIP"
+fi
 echo "완료: $APP"
 ls -lh "$ZIP"
 
@@ -94,6 +116,13 @@ cat > "$WORK/distribution.xml" <<EOF
     <pkg-ref id="com.nkstudio.reframe" version="$VERSION" onConclusion="none">Reframe.pkg</pkg-ref>
 </installer-gui-script>
 EOF
-productbuild --distribution "$WORK/distribution.xml" --resources "$WORK/res" --package-path "$WORK" "$PKG"
+PKG_SIGN=()
+[ -n "${SIGN_INSTALLER_ID:-}" ] && PKG_SIGN=(--sign "$SIGN_INSTALLER_ID" --timestamp)
+productbuild --distribution "$WORK/distribution.xml" --resources "$WORK/res" --package-path "$WORK" \
+    ${PKG_SIGN[@]+"${PKG_SIGN[@]}"} "$PKG"
+if [ -n "${SIGN_INSTALLER_ID:-}" ] && [ -n "${NOTARY_KEY:-}" ]; then
+    notarize "$PKG"
+    xcrun stapler staple "$PKG"
+fi
 echo "완료: $PKG"
 ls -lh "$PKG"
