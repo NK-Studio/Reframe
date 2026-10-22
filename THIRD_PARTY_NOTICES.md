@@ -22,6 +22,14 @@ FFmpeg 빌드에 포함될 수 있는 주요 라이브러리:
 | x265 | GPL-2.0-or-later |
 | SVT-AV1 | BSD-3-Clause-Clear + [AOM 특허 라이선스](https://aomedia.org/license/patent-license/) |
 
+## 폰트: IBM Plex Sans KR
+
+UI 글꼴로 [IBM Plex Sans KR](https://github.com/IBM/plex)(Regular·Medium·SemiBold)을 실행 파일에 넣어 씁니다.
+
+- Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
+- 라이선스: **SIL Open Font License 1.1** — 전문은 `ui/fonts/OFL.txt`, 배포본에는 `LICENSE-IBMPlexSansKR.txt`
+- 글리프는 바꾸지 않고 TTF → WOFF2 형식만 변환했습니다.
+
 ## Rust 크레이트
 
 `Cargo.lock`에 있는 의존성은 모두 GPL-3.0과 함께 쓸 수 있는 라이선스입니다 (MIT, Apache-2.0, Zlib, Unicode-3.0, MPL-2.0 등). 주요 크레이트:

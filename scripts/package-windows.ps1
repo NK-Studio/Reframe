@@ -33,6 +33,7 @@ if (Test-Path $Out) { Remove-Item -Recurse -Force $Out }
 New-Item -ItemType Directory -Force "$Out\ffmpeg" | Out-Null
 Copy-Item target\release\reframe.exe $Out
 Copy-Item LICENSE, THIRD_PARTY_NOTICES.md $Out
+Copy-Item ui\fonts\OFL.txt "$Out\LICENSE-IBMPlexSansKR.txt"
 Copy-Item "$Extract\bin\ffmpeg.exe", "$Extract\bin\ffprobe.exe" "$Out\ffmpeg"
 Copy-Item "$Extract\LICENSE.txt" "$Out\ffmpeg\LICENSE-ffmpeg.txt"
 

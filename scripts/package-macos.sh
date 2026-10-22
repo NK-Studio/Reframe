@@ -25,6 +25,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/ffmpeg"
 cp target/release/reframe "$APP/Contents/MacOS/"
 cp "$FFMPEG_DIR"/{ffmpeg,ffprobe,BUILD_INFO.txt,LICENSE-ffmpeg.txt} "$APP/Contents/Resources/ffmpeg/"
 cp LICENSE THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/"
+cp ui/fonts/OFL.txt "$APP/Contents/Resources/LICENSE-IBMPlexSansKR.txt"
 
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

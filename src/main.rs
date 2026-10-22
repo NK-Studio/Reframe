@@ -20,8 +20,14 @@ use wry::{DragDropEvent, WebViewBuilder};
 use ffmpeg::{ExportOptions, ProbeInfo};
 
 const INDEX_HTML: &str = include_str!("../ui/index.html");
-/// ui/index.html 의 --bg (#16171a)
-const BG_COLOR: (u8, u8, u8, u8) = (0x16, 0x17, 0x1a, 0xff);
+/// UI 폰트 (IBM Plex Sans KR, SIL OFL 1.1 — ui/fonts/OFL.txt). 실행 파일에 넣어 오프라인에서도 같은 모양으로 보인다
+const FONTS: &[(&str, &[u8])] = &[
+    ("/fonts/IBMPlexSansKR-Regular.woff2", include_bytes!("../ui/fonts/IBMPlexSansKR-Regular.woff2")),
+    ("/fonts/IBMPlexSansKR-Medium.woff2", include_bytes!("../ui/fonts/IBMPlexSansKR-Medium.woff2")),
+    ("/fonts/IBMPlexSansKR-SemiBold.woff2", include_bytes!("../ui/fonts/IBMPlexSansKR-SemiBold.woff2")),
+];
+/// ui/index.html 의 --bg (Radix gray-1, #111113)
+const BG_COLOR: (u8, u8, u8, u8) = (0x11, 0x11, 0x13, 0xff);
 
 /// 다른 스레드/IPC 에서 메인 이벤트 루프로 보내는 이벤트
 enum UserEvent {
@@ -98,6 +104,14 @@ struct Current {
     load_seq: u64,
 }
 
+/// `app://` 요청 경로 → (Content-Type, 내용). 폰트가 아니면 모두 index.html
+fn app_asset(path: &str) -> (&'static str, &'static [u8]) {
+    match FONTS.iter().find(|(p, _)| *p == path) {
+        Some((_, font)) => ("font/woff2", font),
+        None => ("text/html; charset=utf-8", INDEX_HTML.as_bytes()),
+    }
+}
+
 /// custom protocol 의 기준 URL (Windows/Android 는 http://<scheme>.localhost 형식)
 fn scheme_url(scheme: &str) -> String {
     if cfg!(any(windows, target_os = "android")) {
@@ -132,10 +146,11 @@ fn main() -> wry::Result<()> {
     let drop_proxy = proxy.clone();
 
     let builder = WebViewBuilder::new()
-        .with_custom_protocol("app".into(), |_, _req| {
+        .with_custom_protocol("app".into(), |_, req| {
+            let (content_type, body) = app_asset(req.uri().path());
             Response::builder()
-                .header("Content-Type", "text/html; charset=utf-8")
-                .body(Cow::Borrowed(INDEX_HTML.as_bytes()))
+                .header("Content-Type", content_type)
+                .body(Cow::Borrowed(body))
                 .unwrap()
         })
         // 비디오 파일 스트리밍 + 프레임 추출은 무거우므로 별도 스레드에서 응답
@@ -381,7 +396,7 @@ fn shell_join(args: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{output_path, output_subdir, IpcMsg};
+    use super::{app_asset, output_path, output_subdir, IpcMsg, INDEX_HTML};
     use crate::ffmpeg::Format;
 
     #[test]
@@ -412,6 +427,19 @@ mod tests {
         assert!(output_path(&dir, ".mp4", "mp4").is_err());
         assert!(output_path(&dir, "a/b", "mp4").is_err());
         assert!(output_path(&dir.join("no-such-dir-xyz"), "a", "mp4").is_err());
+    }
+
+    #[test]
+    fn app_assets() {
+        assert_eq!(app_asset("/").0, "text/html; charset=utf-8");
+        // CSS 의 @font-face 가 가리키는 폰트를 모두 woff2 로 내려준다
+        for name in ["Regular", "Medium", "SemiBold"] {
+            let file = format!("fonts/IBMPlexSansKR-{name}.woff2");
+            assert!(INDEX_HTML.contains(&format!("url(\"{file}\")")), "{file} 가 CSS 에 없음");
+            let (ct, body) = app_asset(&format!("/{file}"));
+            assert_eq!(ct, "font/woff2");
+            assert_eq!(&body[..4], b"wOF2");
+        }
     }
 
     #[test]
