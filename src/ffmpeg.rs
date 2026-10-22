@@ -56,16 +56,6 @@ pub fn is_bundled(path: &Path) -> bool {
     bundled_dirs().iter().any(|d| Some(canon(d)) == tool_dir)
 }
 
-/// "ffmpeg version n9.0.2-31-g… Copyright …" 에서 버전 부분만
-pub fn version(ffmpeg: &Path) -> Option<String> {
-    let out = tool_cmd(ffmpeg).arg("-version").output().ok()?;
-    parse_version(&String::from_utf8_lossy(&out.stdout))
-}
-
-fn parse_version(text: &str) -> Option<String> {
-    text.lines().next()?.strip_prefix("ffmpeg version ")?.split_whitespace().next().map(str::to_string)
-}
-
 /// 이 ffmpeg 에서 쓸 수 있는 인코더를 UI 코덱 키("x264" 등)로 돌려준다.
 pub fn available_encoders(ffmpeg: &Path) -> Vec<&'static str> {
     let out = tool_cmd(ffmpeg).args(["-hide_banner", "-encoders"]).output();
@@ -350,14 +340,6 @@ mod tests {
         let args = build_args(Path::new("in.mp4"), Path::new("out.mp4"), &o, &info).join(" ");
         assert!(args.contains("-c:v libsvtav1 -preset 8 -crf 28"), "{args}");
         assert!(!args.contains("hvc1"));
-    }
-
-    #[test]
-    fn version_line() {
-        let text = "ffmpeg version n9.0.2-31-gc89d6ee1ca-20261021 Copyright (c) 2000-2026 the FFmpeg developers\nbuilt with gcc";
-        assert_eq!(parse_version(text).as_deref(), Some("n9.0.2-31-gc89d6ee1ca-20261021"));
-        assert_eq!(parse_version("ffmpeg version 7.1 Copyright").as_deref(), Some("7.1"));
-        assert_eq!(parse_version(""), None);
     }
 
     #[test]

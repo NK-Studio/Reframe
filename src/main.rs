@@ -26,6 +26,10 @@ const FONTS: &[(&str, &[u8])] = &[
     ("/fonts/IBMPlexSansKR-Medium.woff2", include_bytes!("../ui/fonts/IBMPlexSansKR-Medium.woff2")),
     ("/fonts/IBMPlexSansKR-SemiBold.woff2", include_bytes!("../ui/fonts/IBMPlexSansKR-SemiBold.woff2")),
 ];
+/// 창 아이콘: 64×64 RGBA (scripts/make-icons.py 가 assets/icon/reframe-1024.png 에서 만든다)
+const WINDOW_ICON: &[u8] = include_bytes!("../assets/icon/window-64.rgba");
+/// 앱 정보 창 로고
+const LOGO_PNG: &[u8] = include_bytes!("../assets/icon/reframe-256.png");
 /// ui/index.html 의 --bg (Radix gray-1, #111113)
 const BG_COLOR: (u8, u8, u8, u8) = (0x11, 0x11, 0x13, 0xff);
 
@@ -40,6 +44,8 @@ enum UserEvent {
     Reveal(PathBuf),
     /// 앱 정보 창의 GitHub 링크: 기본 브라우저로 저장소 열기
     OpenRepo,
+    /// 페이지가 window.onHost 를 준비함: 쌓아 둔 메시지를 보낸다
+    Ready,
     /// JS 쪽 `window.onHost(msg)` 로 전달할 메시지
     ToJs(serde_json::Value),
 }
@@ -53,6 +59,7 @@ enum IpcMsg {
     Cancel,
     Reveal { path: PathBuf },
     OpenRepo,
+    Ready,
     /// 디버깅용: JS 로그를 터미널로
     Log { msg: String },
 }
@@ -107,8 +114,11 @@ struct Current {
     load_seq: u64,
 }
 
-/// `app://` 요청 경로 → (Content-Type, 내용). 폰트가 아니면 모두 index.html
+/// `app://` 요청 경로 → (Content-Type, 내용). 폰트·로고가 아니면 모두 index.html
 fn app_asset(path: &str) -> (&'static str, &'static [u8]) {
+    if path == "/icon.png" {
+        return ("image/png", LOGO_PNG);
+    }
     match FONTS.iter().find(|(p, _)| *p == path) {
         Some((_, font)) => ("font/woff2", font),
         None => ("text/html; charset=utf-8", INDEX_HTML.as_bytes()),
@@ -137,6 +147,7 @@ fn main() -> wry::Result<()> {
         .with_min_inner_size(LogicalSize::new(900.0, 600.0))
         // 페이지가 그려지기 전 흰 화면이 번쩍이지 않게 UI 배경색(--bg)과 맞춘다
         .with_background_color(BG_COLOR)
+        .with_window_icon(tao::window::Icon::from_rgba(WINDOW_ICON.to_vec(), 64, 64).ok())
         .build(&event_loop)
         .expect("window");
 
@@ -173,6 +184,7 @@ fn main() -> wry::Result<()> {
                 Ok(IpcMsg::Cancel) => UserEvent::Cancel,
                 Ok(IpcMsg::Reveal { path }) => UserEvent::Reveal(path),
                 Ok(IpcMsg::OpenRepo) => UserEvent::OpenRepo,
+                Ok(IpcMsg::Ready) => UserEvent::Ready,
                 Ok(IpcMsg::Log { msg }) => return eprintln!("[ui] {msg}"),
                 Err(e) => {
                     eprintln!("bad ipc: {e}: {}", req.body());
@@ -202,13 +214,8 @@ fn main() -> wry::Result<()> {
         builder.build_gtk(window.default_vbox().unwrap())?
     };
 
-    // 앱 정보 (사이드바 아래 · 정보 창)
-    let _ = proxy.send_event(UserEvent::ToJs(json!({
-        "type": "app",
-        "version": env!("CARGO_PKG_VERSION"),
-        "description": env!("CARGO_PKG_DESCRIPTION"),
-        "repository": env!("CARGO_PKG_REPOSITORY"),
-    })));
+    // 앱 정보 (사이드바 아래 · 정보 창). 페이지가 준비될 때까지는 ToJs 가 큐에 쌓였다가 전달된다
+    send(&proxy, json!({"type": "app", "version": env!("CARGO_PKG_VERSION")}));
     match &ffmpeg_bin {
         Some(ffmpeg) if ffprobe_bin.is_some() => {
             let bundled = ffmpeg::is_bundled(ffmpeg);
@@ -220,8 +227,6 @@ fn main() -> wry::Result<()> {
                 send(&proxy, json!({
                     "type": "tools",
                     "bundled": bundled,
-                    "path": ffmpeg,
-                    "version": ffmpeg::version(&ffmpeg),
                     "encoders": ffmpeg::available_encoders(&ffmpeg),
                 }));
             });
@@ -239,6 +244,7 @@ fn main() -> wry::Result<()> {
         let _ = proxy.send_event(UserEvent::Load(arg.into()));
     }
 
+    let mut page = Page::default();
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
         match event {
@@ -246,10 +252,36 @@ fn main() -> wry::Result<()> {
                 ffmpeg::cancel(&job);
                 *control_flow = ControlFlow::Exit;
             }
-            Event::UserEvent(ev) => handle_event(ev, &proxy, &webview, &current, &job, &ffmpeg_bin, &ffprobe_bin),
+            Event::UserEvent(ev) => handle_event(ev, &proxy, &webview, &mut page, &current, &job, &ffmpeg_bin, &ffprobe_bin),
             _ => {}
         }
     });
+}
+
+/// 페이지(JS)가 `window.onHost` 를 만들기 전에 보낸 메시지는 사라지므로,
+/// 페이지가 준비됐다고 알릴 때(IpcMsg::Ready)까지 모아 뒀다가 한꺼번에 보낸다.
+#[derive(Default)]
+struct Page {
+    ready: bool,
+    queue: Vec<serde_json::Value>,
+}
+
+impl Page {
+    /// 지금 보낼 메시지들. 준비 전이면 큐에 넣고 아무것도 돌려주지 않는다
+    fn push(&mut self, v: serde_json::Value) -> Vec<serde_json::Value> {
+        if self.ready {
+            vec![v]
+        } else {
+            self.queue.push(v);
+            Vec::new()
+        }
+    }
+
+    /// 준비 완료: 그동안 쌓인 메시지를 순서대로 돌려준다
+    fn set_ready(&mut self) -> Vec<serde_json::Value> {
+        self.ready = true;
+        std::mem::take(&mut self.queue)
+    }
 }
 
 fn send(proxy: &EventLoopProxy<UserEvent>, v: serde_json::Value) {
@@ -260,15 +292,20 @@ fn handle_event(
     ev: UserEvent,
     proxy: &EventLoopProxy<UserEvent>,
     webview: &wry::WebView,
+    page: &mut Page,
     current: &Arc<Mutex<Current>>,
     job: &ffmpeg::Job,
     ffmpeg_bin: &Option<PathBuf>,
     ffprobe_bin: &Option<PathBuf>,
 ) {
-    match ev {
-        UserEvent::ToJs(v) => {
+    let to_js = |msgs: Vec<serde_json::Value>| {
+        for v in msgs {
             let _ = webview.evaluate_script(&format!("window.onHost({v})"));
         }
+    };
+    match ev {
+        UserEvent::ToJs(v) => to_js(page.push(v)),
+        UserEvent::Ready => to_js(page.set_ready()),
         UserEvent::PickFile => {
             let picked = rfd::FileDialog::new()
                 .set_title("크롭할 영상 선택")
@@ -455,8 +492,23 @@ mod tests {
     }
 
     #[test]
+    fn page_queue() {
+        let mut page = super::Page::default();
+        assert!(page.push(serde_json::json!(1)).is_empty());
+        assert!(page.push(serde_json::json!(2)).is_empty());
+        assert_eq!(page.set_ready(), vec![serde_json::json!(1), serde_json::json!(2)]);
+        assert_eq!(page.push(serde_json::json!(3)), vec![serde_json::json!(3)]);
+        assert!(matches!(serde_json::from_str::<IpcMsg>(r#"{"cmd":"ready"}"#), Ok(IpcMsg::Ready)));
+    }
+
+    #[test]
     fn app_assets() {
         assert_eq!(app_asset("/").0, "text/html; charset=utf-8");
+        let (ct, logo) = app_asset("/icon.png");
+        assert_eq!(ct, "image/png");
+        assert_eq!(&logo[1..4], b"PNG");
+        assert!(INDEX_HTML.contains("src=\"icon.png\""), "정보 창 로고가 icon.png 를 쓰지 않음");
+        assert_eq!(super::WINDOW_ICON.len(), 64 * 64 * 4);
         // CSS 의 @font-face 가 가리키는 폰트를 모두 woff2 로 내려준다
         for name in ["Regular", "Medium", "SemiBold"] {
             let file = format!("fonts/IBMPlexSansKR-{name}.woff2");

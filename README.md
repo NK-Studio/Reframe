@@ -41,6 +41,12 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1   # dist\Re
 
 동봉한 ffmpeg의 버전, 빌드 옵션, 소스 위치는 배포본 안의 `ffmpeg/BUILD_INFO.txt`에 기록됩니다.
 
+**앱 아이콘**: 원본은 `assets/icon/reframe.prism`(Prism 문서)입니다. 고친 뒤 `reframe-1024.png`로 내보내고 아래를 실행하면 Windows `.ico`, macOS `.icns`, 창 아이콘, 정보 창 로고가 다시 만들어집니다 (Pillow 필요).
+
+```bash
+python scripts/make-icons.py
+```
+
 ## 기능
 - 비율 프리셋: 자유 · 원본 · 1:1 · 4:5 · 4:3 · 3:4 · 16:9 · 9:16 · 3:2 · 2:3 · 21:9 · 커스텀(a:b, ⇄ 뒤집기)
 - 드래그 이동 / 8방향 핸들 리사이즈 (비율 고정 유지), 방향키 미세 이동, 3분할 가이드

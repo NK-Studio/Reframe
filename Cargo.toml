@@ -6,6 +6,9 @@ license = "GPL-3.0-only"
 description = "ffmpeg 기반 영상 화면 영역(가로·세로) 크롭 도구"
 repository = "https://github.com/NK-Studio/video-crop"
 
+[build-dependencies]
+winresource = "0.1"
+
 [dependencies]
 rfd = "0.17.2"
 serde = { version = "1.0.229", features = ["derive"] }

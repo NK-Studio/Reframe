@@ -12,8 +12,9 @@
     --gray-7: #43484e; --gray-8: #5a6169; --gray-9: #696e77; --gray-10: #777b84; --gray-11: #b0b4ba; --gray-12: #edeef0;
     --gray-a2: #d8f4f609; --gray-a3: #ddeaf814; --gray-a4: #d3edf81d; --gray-a5: #d9edfe25; --gray-a6: #d6ebfd30;
     --gray-a7: #d9edff40; --gray-a8: #d9edff5d; --gray-a11: #f1f7feb5;
-    --accent-2: #111927; --accent-3: #0d2847; --accent-8: #2870bd; --accent-9: #0090ff; --accent-10: #3b9eff; --accent-11: #70b8ff;
-    --accent-a2: #1166fb18; --accent-a3: #0077ff3a; --accent-a4: #0075ff57; --accent-a5: #0081fd6b; --accent-a7: #2a91fe98;
+    /* 강조색: Radix teal — 앱 아이콘의 청록과 맞춘다 */
+    --accent-2: #111c1b; --accent-3: #0d2d2a; --accent-8: #207e73; --accent-9: #12a594; --accent-10: #0eb39e; --accent-11: #0bd8b6;
+    --accent-a2: #12fbe60c; --accent-a3: #00ffe61e; --accent-a4: #00ffe92d; --accent-a5: #00ffea3b; --accent-a7: #2efde85f;
     --red-3: #3b1219; --red-a7: #ff536184; --red-9: #e5484d; --red-11: #ff9592; --red-12: #ffd1d9;
     --green-11: #3dd68c; --amber-11: #ffca16;
 
@@ -218,15 +219,22 @@
     font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
   .app-foot:hover:not(:disabled), .app-foot:active:not(:disabled) { background: transparent; color: var(--gray-11); }
   .app-foot .i { font-size: 13px; }
-  .about-hero { display: flex; align-items: center; gap: 14px; padding: 24px 24px 4px; }
-  .about-hero .logo { width: 48px; height: 48px; flex: none; display: grid; place-items: center; border-radius: var(--r4);
-    background: var(--accent-a3); color: var(--accent-11); box-shadow: inset 0 0 0 1px var(--accent-a5); }
-  .about-name b { font-size: 18px; line-height: 24px; font-weight: 600; }
-  .about-name .ver { margin-left: 8px; padding: 1px 6px; border-radius: var(--r1); background: var(--gray-a3); color: var(--gray-11);
-    font-size: 12px; font-variant-numeric: tabular-nums; vertical-align: 2px; }
-  .about-name p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
-  #aboutFfmpeg span:nth-child(even) { word-break: break-all; user-select: text; -webkit-user-select: text; }
-  .about-lic { font-size: 12px; }
+  /* 정보 창: 로고 · 이름 · 버전, 철학, 만든 사람 */
+  .modal.about { width: 400px; }
+  .about-hero { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 32px 28px 0; text-align: center; }
+  /* 앱 아이콘 그림 자체에 여백(1024 중 100px)이 있어 조금 크게 둔다 */
+  .about-hero .logo { width: 88px; height: 88px; margin: -8px 0 -6px; }
+  .about-hero b { font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -.01em; }
+  .about-hero .ver { padding: 1px 8px; border-radius: 999px; background: var(--gray-a3); color: var(--gray-11);
+    font-size: 12px; font-variant-numeric: tabular-nums; }
+  .about-story { padding: 20px 32px 4px; text-align: center; }
+  .about-story .lead { margin: 0 0 12px; font-size: 16px; line-height: 24px; font-weight: 500; color: var(--gray-12); }
+  .about-story p { margin: 0 0 10px; font-size: 13px; line-height: 22px; color: var(--gray-11); word-break: keep-all; }
+  .about-foot { display: flex; align-items: center; gap: 4px; margin-top: 20px; padding: 16px 20px 20px 28px; border-top: 1px solid var(--line); }
+  .about-foot .muted { font-size: 13px; }
+  .about-foot .primary { margin-left: auto; min-width: 88px; }
+  button.link { height: 28px; padding: 0 6px; background: transparent; color: var(--accent-11); font-size: 13px; }
+  button.link:hover:not(:disabled) { background: var(--accent-a3); }
 
   /* ---- 내보내기 창: Radix Dialog ---- */
   .modal-back { position: fixed; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center; padding: 24px;
@@ -342,36 +350,19 @@
 
 <!-- 앱 정보 창 -->
 <div class="modal-back" id="aboutDlg">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+  <div class="modal about" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
     <div class="about-hero">
-      <div class="logo"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg></div>
-      <div class="about-name">
-        <div><b id="aboutTitle">Reframe</b><span class="ver" id="aboutVer"></span></div>
-        <p id="aboutDesc"></p>
-      </div>
+      <img class="logo" src="icon.png" width="88" height="88" alt="">
+      <b id="aboutTitle">Reframe</b>
+      <span class="ver" id="aboutVer"></span>
     </div>
-    <div class="modal-body">
-      <div>
-        <div class="field-head">FFmpeg</div>
-        <div class="info" id="aboutFfmpeg"><span>상태</span><span>확인 중…</span></div>
-      </div>
-      <div class="divider"></div>
-      <div>
-        <div class="field-head">라이선스</div>
-        <div class="info about-lic">
-          <span>Reframe</span><span>GPL-3.0</span>
-          <span>FFmpeg</span><span>GPL / LGPL (빌드에 따라)</span>
-          <span>IBM Plex Sans KR</span><span>SIL OFL 1.1</span>
-          <span>Radix Colors</span><span>MIT</span>
-          <span>wry · tao · rfd · serde</span><span>MIT / Apache-2.0</span>
-        </div>
-        <p class="muted" style="margin:10px 0 0">자세한 내용은 함께 배포된 THIRD_PARTY_NOTICES.md 를 참고하세요.</p>
-      </div>
+    <div class="about-story">
+      <p class="lead">무엇을 담고, 무엇을 뺄 것인가.</p>
+      <p>그 선택이 프레임이 된다.</p>
     </div>
-    <div class="modal-foot">
-      <span class="muted" style="margin-right:auto">© NK Studio</span>
-      <button id="repoBtn">GitHub</button>
+    <div class="about-foot">
+      <span class="muted">만든 사람</span>
+      <button class="link" id="repoBtn" title="GitHub 저장소 열기">NK Studio ↗</button>
       <button class="primary" id="aboutClose">닫기</button>
     </div>
   </div>
@@ -1108,7 +1099,6 @@ function toast(msg) {
 }
 
 // ---- 앱 정보: 사이드바 아래 한 줄 + 정보 창 ----
-const CODEC_NAMES = { vt264: 'H.264 (VideoToolbox)', vt265: 'H.265 (VideoToolbox)', x264: 'H.264 (x264)', x265: 'H.265 (x265)', av1: 'AV1 (SVT-AV1)' };
 const about = { version: '', tools: null };
 const aboutOpen = () => $('aboutDlg').classList.contains('on');
 function renderAbout() {
@@ -1116,15 +1106,7 @@ function renderAbout() {
   const ff = !t ? '확인 중…' : t.missing ? 'ffmpeg 없음' : t.bundled ? 'ffmpeg 동봉' : '시스템 ffmpeg';
   $('footText').textContent = `Reframe${about.version ? ' v' + about.version : ''} · ${ff}`;
   $('aboutVer').textContent = about.version ? 'v' + about.version : '';
-  const rows = !t ? [['상태', '확인 중…']]
-    : t.missing ? [['상태', '찾을 수 없음 — 동봉 버전을 받거나 시스템에 설치하세요']]
-    : [
-      ['상태', t.bundled ? '앱에 동봉' : '시스템에 설치된 것 사용'],
-      ['버전', t.version || '알 수 없음'],
-      ['경로', t.path || '—'],
-      ['코덱', [...t.encoders.map(k => CODEC_NAMES[k] ?? k), 'GIF'].join(', ')],
-    ];
-  $('aboutFfmpeg').replaceChildren(...rows.flatMap(([k, v]) => [k, v].map(s => Object.assign(document.createElement('span'), { textContent: s }))));
+  $('aboutVer').style.display = about.version ? '' : 'none';
 }
 function openAbout() { closeList(); renderAbout(); $('aboutDlg').classList.add('on'); $('aboutClose').focus(); }
 function closeAbout() { $('aboutDlg').classList.remove('on'); }
@@ -1153,7 +1135,7 @@ window.onHost = (m) => {
     case 'loadFailed': setLoading(false); toast(m.message); break;
     case 'error': toast(m.message); break;
     case 'folder': setDir(m.path); break;
-    case 'app': about.version = m.version; $('aboutDesc').textContent = m.description; renderAbout(); break;
+    case 'app': about.version = m.version; renderAbout(); break;
     case 'tools': about.tools = m; setEncoders(m.encoders); renderAbout(); break;
     case 'exportStart':
       video.pause();
@@ -1187,6 +1169,8 @@ buildRatioButtons();
 setRatio('free');
 ['fmt', 'codec', 'gifWidth'].forEach(id => enhanceSelect($(id)));
 renderAbout();
+// window.onHost 가 준비됐음을 알린다. Rust 는 그동안 쌓아 둔 메시지(앱 정보·코덱 목록 등)를 이때 보낸다
+post({ cmd: 'ready' });
 </script>
 </body>
 </html>
