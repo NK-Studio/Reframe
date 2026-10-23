@@ -14,7 +14,7 @@ use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy};
 use tao::window::WindowBuilder;
 use wry::http::{Request, Response};
-use wry::{DragDropEvent, WebViewBuilder};
+use wry::{DragDropEvent, WebContext, WebViewBuilder};
 
 use reframe_core::ffmpeg::{self, ExportOptions, ProbeInfo};
 use reframe_core::output::{output_path, output_subdir};
@@ -103,6 +103,16 @@ fn app_asset(path: &str) -> (&'static str, &'static [u8]) {
     }
 }
 
+/// WebView 데이터 폴더. WebView2 는 따로 정하지 않으면 실행 파일 옆(`Reframe.exe.WebView2`)에 만드는데,
+/// Program Files 에 설치하면 일반 사용자는 거기에 쓸 수 없어(액세스 거부) 창이 뜨지 않는다. 그래서 사용자 폴더를 쓴다
+fn webview_data_dir() -> Option<PathBuf> {
+    if cfg!(windows) {
+        std::env::var_os("LOCALAPPDATA").map(|d| PathBuf::from(d).join("Reframe").join("WebView2"))
+    } else {
+        None
+    }
+}
+
 /// custom protocol 의 기준 URL (Windows/Android 는 http://<scheme>.localhost 형식)
 fn scheme_url(scheme: &str) -> String {
     if cfg!(any(windows, target_os = "android")) {
@@ -137,7 +147,8 @@ fn main() -> wry::Result<()> {
     let ipc_proxy = proxy.clone();
     let drop_proxy = proxy.clone();
 
-    let builder = WebViewBuilder::new()
+    let mut web_context = WebContext::new(webview_data_dir());
+    let builder = WebViewBuilder::new_with_web_context(&mut web_context)
         .with_custom_protocol("app".into(), |_, req| {
             let (content_type, body) = app_asset(req.uri().path());
             Response::builder()
@@ -185,13 +196,21 @@ fn main() -> wry::Result<()> {
         .with_url(scheme_url("app"));
 
     #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
-    let webview = builder.build(&window)?;
+    let webview = builder.build(&window);
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     let webview = {
         use tao::platform::unix::WindowExtUnix;
         use wry::WebViewBuilderExtUnix;
-        builder.build_gtk(window.default_vbox().unwrap())?
+        builder.build_gtk(window.default_vbox().unwrap())
     };
+    // 릴리스 빌드는 콘솔이 없어 오류가 보이지 않으므로 창으로 알린다
+    let webview = webview.inspect_err(|e| {
+        rfd::MessageDialog::new()
+            .set_level(rfd::MessageLevel::Error)
+            .set_title("Reframe")
+            .set_description(format!("화면을 만들 수 없어 Reframe 을 시작하지 못했습니다.\n\n{e}"))
+            .show();
+    })?;
 
     // 앱 정보 (사이드바 아래 · 정보 창). 페이지가 준비될 때까지는 ToJs 가 큐에 쌓였다가 전달된다
     send(&proxy, json!({"type": "app", "version": env!("CARGO_PKG_VERSION")}));
