@@ -202,9 +202,12 @@ pub struct ExportOptions {
     /// GIF: 초당 프레임 수
     #[serde(default = "default_gif_fps")]
     pub gif_fps: u32,
-    /// GIF: 가로 크기 (None 이면 크롭 크기 그대로)
+    /// 출력 가로 크기. 세로와 함께 주면 그 크기로, 하나만 주면 크롭 비율대로, 둘 다 없으면 크롭 크기 그대로
     #[serde(default)]
-    pub gif_width: Option<u32>,
+    pub out_w: Option<u32>,
+    /// 출력 세로 크기
+    #[serde(default)]
+    pub out_h: Option<u32>,
 }
 
 fn default_gif_fps() -> u32 {
@@ -215,13 +218,31 @@ fn even(v: u32) -> u32 {
     (v / 2 * 2).max(2)
 }
 
+/// 크롭(w×h)을 키우거나 줄일 출력 크기. 크롭 크기와 같으면 None (scale 필터를 넣지 않음).
+/// GIF 는 용량을 줄이는 용도라 줄이기만 하고, 크롭보다 크면 무시한다
+fn out_size(o: &ExportOptions, w: u32, h: u32) -> Option<(u32, u32)> {
+    let scaled = |v: u32, num: u32, den: u32| even((v as f64 * num as f64 / den as f64).round() as u32);
+    let size = match (o.out_w.filter(|&v| v > 0).map(even), o.out_h.filter(|&v| v > 0).map(even)) {
+        (Some(ow), Some(oh)) => (ow, oh),
+        (Some(ow), None) => (ow, scaled(ow, h, w)),
+        (None, Some(oh)) => (scaled(oh, w, h), oh),
+        (None, None) => return None,
+    };
+    if o.format == Format::Gif && (size.0 > w || size.1 > h) {
+        return None;
+    }
+    (size != (w, h)).then_some(size)
+}
+
 pub fn build_args(input: &Path, output: &Path, o: &ExportOptions, info: &ProbeInfo) -> Vec<String> {
     // yuv420p 인코딩은 가로/세로가 짝수여야 한다
     let w = even(o.w.min(info.width));
     let h = even(o.h.min(info.height));
     let x = o.x.min(info.width - w);
     let y = o.y.min(info.height - h);
-    let crop = format!("crop={w}:{h}:{x}:{y},setsar=1");
+    let scale = out_size(o, w, h).map(|(sw, sh)| format!(",scale={sw}:{sh}:flags=lanczos")).unwrap_or_default();
+    // 짝수 보정·비율 맞춤으로 가로세로 비가 미세하게 달라져도 픽셀 비율은 1:1 로 (scale 뒤에 둬야 함)
+    let crop = format!("crop={w}:{h}:{x}:{y}{scale},setsar=1");
 
     let mut a: Vec<String> = ["-y", "-hide_banner", "-nostats", "-progress", "pipe:1", "-i"]
         .iter()
@@ -232,11 +253,7 @@ pub fn build_args(input: &Path, output: &Path, o: &ExportOptions, info: &ProbeIn
     if o.format == Format::Gif {
         // 프레임 수·크기를 줄이고, 영상에서 뽑은 256색 팔레트로 변환해야 GIF 화질이 산다
         let fps = o.gif_fps.clamp(1, 50);
-        let mut vf = format!("crop={w}:{h}:{x}:{y},fps={fps}");
-        if let Some(gw) = o.gif_width.filter(|&gw| gw > 0 && gw < w) {
-            vf += &format!(",scale={}:-2:flags=lanczos", even(gw));
-        }
-        // 짝수 보정으로 비율이 미세하게 달라져도 픽셀 비율은 1:1 로 (scale 뒤에 둬야 함)
+        let mut vf = format!("crop={w}:{h}:{x}:{y},fps={fps}{scale}");
         vf += ",setsar=1,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle";
         a.extend(["-map", "0:v:0", "-vf", &vf, "-an", "-loop", "0"].map(String::from));
         a.push(output.to_string_lossy().into_owned());
@@ -351,11 +368,38 @@ mod tests {
         };
         let o = ExportOptions {
             x: 0, y: 0, w: 608, h: 1080, format: Format::Mp4, codec: "av1".into(), quality: 75, audio: "auto".into(),
-            gif_fps: 15, gif_width: None,
+            gif_fps: 15, out_w: None, out_h: None,
         };
         let args = build_args(Path::new("in.mp4"), Path::new("out.mp4"), &o, &info).join(" ");
         assert!(args.contains("-c:v libsvtav1 -preset 8 -crf 28"), "{args}");
         assert!(!args.contains("hvc1"));
+        assert!(args.contains("-vf crop=608:1080:0:0,setsar=1 "), "{args}");
+    }
+
+    #[test]
+    fn scale_up_args() {
+        let info = ProbeInfo {
+            width: 1920, height: 1080, rotation: 0, duration: 1.0, fps: 30.0,
+            video_codec: "h264".into(), audio_codec: None, size: 0,
+        };
+        // 16:9 영상에서 9:16 으로 자른 608×1080 을 1080×1920 으로 키운다
+        let o = ExportOptions {
+            x: 656, y: 0, w: 608, h: 1080, format: Format::Mp4, codec: "x264".into(), quality: 75, audio: "auto".into(),
+            gif_fps: 15, out_w: Some(1080), out_h: Some(1920),
+        };
+        let args = build_args(Path::new("in.mp4"), Path::new("out.mp4"), &o, &info).join(" ");
+        assert!(args.contains("-vf crop=608:1080:656:0,scale=1080:1920:flags=lanczos,setsar=1 "), "{args}");
+        // 한 변만 주면 크롭 비율대로 (짝수로)
+        let o = ExportOptions { out_h: None, ..o };
+        let args = build_args(Path::new("in.mp4"), Path::new("out.mp4"), &o, &info).join(" ");
+        assert!(args.contains(",scale=1080:1918:flags=lanczos,"), "{args}");
+        let o = ExportOptions { out_w: None, out_h: Some(1921), ..o };
+        let args = build_args(Path::new("in.mp4"), Path::new("out.mp4"), &o, &info).join(" ");
+        assert!(args.contains(",scale=1080:1920:flags=lanczos,"), "{args}");
+        // 크롭 크기와 같으면 scale 을 넣지 않는다
+        let o = ExportOptions { out_w: Some(608), out_h: Some(1080), ..o };
+        let args = build_args(Path::new("in.mp4"), Path::new("out.mp4"), &o, &info).join(" ");
+        assert!(!args.contains("scale="), "{args}");
     }
 
     #[test]
@@ -366,17 +410,19 @@ mod tests {
         };
         let o = ExportOptions {
             x: 0, y: 0, w: 608, h: 1080, format: Format::Gif, codec: "x264".into(), quality: 75, audio: "auto".into(),
-            gif_fps: 12, gif_width: Some(481),
+            gif_fps: 12, out_w: Some(481), out_h: None,
         };
         let args = build_args(Path::new("in.mp4"), Path::new("out.gif"), &o, &info).join(" ");
-        assert!(args.contains("crop=608:1080:0:0,fps=12,scale=480:-2:flags=lanczos,setsar=1,split"), "{args}");
+        assert!(args.contains("crop=608:1080:0:0,fps=12,scale=480:852:flags=lanczos,setsar=1,split"), "{args}");
         assert!(args.contains("palettegen") && args.contains("paletteuse"), "{args}");
         assert!(args.contains("-an -loop 0 out.gif"), "{args}");
         assert!(!args.contains("-c:v") && !args.contains("0:a:0"), "{args}");
-        // 크롭보다 크거나 같은 가로는 무시 (확대하지 않음)
-        let o = ExportOptions { gif_width: Some(608), ..o };
-        let args = build_args(Path::new("in.mp4"), Path::new("out.gif"), &o, &info).join(" ");
-        assert!(!args.contains(",scale="), "{args}");
+        // 크롭 크기 그대로거나 더 크면 scale 없음 (GIF 는 키우지 않는다)
+        for out_w in [608, 1080] {
+            let o = ExportOptions { out_w: Some(out_w), ..o.clone() };
+            let args = build_args(Path::new("in.mp4"), Path::new("out.gif"), &o, &info).join(" ");
+            assert!(args.contains("fps=12,setsar=1,split"), "{args}");
+        }
     }
 
     /// ffmpeg 이 설치된 환경에서 `VC_TEST_DIR=<샘플 폴더> cargo test -- --ignored` 로 실행
@@ -395,7 +441,7 @@ mod tests {
             let w = h * 9 / 16 + 1;
             let o = ExportOptions {
                 x: 101, y: 0, w, h, format: Format::Mp4, codec: codec.into(), quality: 70, audio: "auto".into(),
-                gif_fps: 15, gif_width: None,
+                gif_fps: 15, out_w: None, out_h: None,
             };
             let out = dir.join(format!("out_{name}.mp4"));
             let args = build_args(&input, &out, &o, &info);

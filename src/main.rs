@@ -380,7 +380,7 @@ fn handle_event(
             }
 
             let args = ffmpeg::build_args(&input, &output, &opts, &info);
-            send(proxy, json!({"type": "exportStart", "command": format!("ffmpeg {}", ffmpeg::shell_join(&args))}));
+            send(proxy, json!({"type": "exportStart"}));
 
             let proxy = proxy.clone();
             let job = job.clone();
@@ -444,11 +444,12 @@ mod tests {
         assert!(!req.overwrite);
         assert_eq!(req.opts.w, 608);
         assert_eq!(req.opts.format, Format::Mp4);
-        let msg = r#"{"cmd":"export","dir":"/tmp/out","name":"a","x":0,"y":0,"w":608,"h":1080,"format":"gif","codec":"x264","quality":75,"audio":"auto","gif_fps":12,"gif_width":480,"overwrite":true}"#;
+        assert_eq!((req.opts.out_w, req.opts.out_h), (None, None));
+        let msg = r#"{"cmd":"export","dir":"/tmp/out","name":"a","x":0,"y":0,"w":608,"h":1080,"format":"gif","codec":"x264","quality":75,"audio":"auto","gif_fps":12,"out_w":480,"out_h":852,"overwrite":true}"#;
         let Ok(IpcMsg::Export(req)) = serde_json::from_str::<IpcMsg>(msg) else { panic!("parse failed") };
         assert!(req.overwrite);
         assert_eq!(req.opts.format, Format::Gif);
-        assert_eq!((req.opts.gif_fps, req.opts.gif_width), (12, Some(480)));
+        assert_eq!((req.opts.gif_fps, req.opts.out_w, req.opts.out_h), (12, Some(480), Some(852)));
         let msg = r#"{"cmd":"pickFolder","current":null}"#;
         assert!(matches!(serde_json::from_str::<IpcMsg>(msg), Ok(IpcMsg::PickFolder { current: None })));
     }

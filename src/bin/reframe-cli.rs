@@ -57,9 +57,12 @@ struct CropArgs {
     /// GIF 초당 프레임 수
     #[arg(long, default_value_t = 15)]
     gif_fps: u32,
-    /// GIF 가로 크기 (생략하면 크롭 크기 그대로)
-    #[arg(long)]
-    gif_width: Option<u32>,
+    /// 출력 가로 크기. --height 없이 주면 세로는 크롭 비율대로 (생략하면 크롭 크기 그대로). GIF 는 줄이기만 된다
+    #[arg(long, alias = "gif-width", value_parser = clap::value_parser!(u32).range(2..))]
+    width: Option<u32>,
+    /// 출력 세로 크기. --width 와 함께 주면 정확히 그 크기로 (예: --width 1080 --height 1920)
+    #[arg(long, value_parser = clap::value_parser!(u32).range(2..))]
+    height: Option<u32>,
     /// 같은 이름의 파일이 있으면 덮어쓴다
     #[arg(short = 'y', long)]
     overwrite: bool,
@@ -206,7 +209,8 @@ fn crop(a: CropArgs) -> Result<(), String> {
         }
         .into(),
         gif_fps: a.gif_fps,
-        gif_width: a.gif_width,
+        out_w: a.width,
+        out_h: a.height,
     };
     let args = ffmpeg::build_args(&a.input, &output, &opts, &info);
     if a.dry_run {

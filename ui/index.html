@@ -249,10 +249,6 @@
   .status { font-size: 12px; color: var(--muted); word-break: break-all; white-space: pre-wrap; }
   .status.err { color: var(--red-11); }
   details { font-size: 12px; color: var(--muted); }
-  details code { display: block; margin-top: 6px; padding: 8px; background: var(--gray-a2); box-shadow: inset 0 0 0 1px var(--gray-a5);
-    border-radius: var(--r2); word-break: break-all; font-size: 11px; line-height: 16px; user-select: text; -webkit-user-select: text; }
-  #cmdBox > summary { cursor: pointer; }
-  #cmdBox > summary:hover { color: var(--text); }
   .warn { color: var(--amber-11); font-size: 12px; margin: 0; }
   /* 사이드바 맨 아래 앱 정보 한 줄 → 누르면 정보 창 */
   .app-foot { height: auto; padding: 4px 2px; justify-content: space-between; background: transparent; color: var(--gray-9);
@@ -283,7 +279,7 @@
 
   /* ---- 내보내기 창: Radix Dialog ---- */
   .modal-back { position: fixed; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center; padding: 24px;
-    background: var(--overlay); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: vc-fade .15s; }
+    background: var(--overlay); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); animation: vc-fade .15s; }
   .modal-back.on { display: flex; }
   .modal { width: 420px; max-width: 100%; max-height: 100%; display: flex; flex-direction: column; background: var(--panel);
     border-radius: var(--r4); box-shadow: var(--shadow-pop); animation: vc-pop .16s cubic-bezier(.16, 1, .3, 1); }
@@ -296,6 +292,25 @@
   .modal-foot button { min-width: 88px; }
   .opts { display: none; flex-direction: column; gap: 16px; }
   .opts.on { display: flex; }
+  /* 출력 크기: 기준 변 입력 + 빠른 선택 */
+  .size-edit { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+  .size-edit input { width: 96px; flex: none; }
+  .presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+  .presets button { height: 26px; padding: 0; border-radius: 999px; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums;
+    background: var(--gray-a2); box-shadow: inset 0 0 0 1px var(--gray-a5); color: var(--gray-11); }
+  .presets button:hover:not(:disabled) { background: var(--gray-a3); color: var(--gray-12); }
+  .presets button.on, .presets button.on:hover { background: var(--accent-a3); box-shadow: inset 0 0 0 1px var(--accent-a7); color: var(--gray-12); }
+  #upNote { margin: 8px 0 0; }
+  /* 내보내기 창 탭: Radix Tabs. 패널을 한 칸에 겹쳐 두어 탭을 바꿔도 창 높이가 변하지 않는다 */
+  .tabs { display: flex; gap: 4px; margin-bottom: -4px; box-shadow: inset 0 -1px 0 var(--line); }
+  .tabs button { position: relative; height: 36px; padding: 0 10px; border-radius: 0; background: transparent; color: var(--gray-11); font-size: 13px; font-weight: 500; }
+  .tabs button:hover:not(:disabled), .tabs button:active:not(:disabled) { background: transparent; color: var(--gray-12); }
+  .tabs button::after { content: ''; position: absolute; left: 6px; right: 6px; bottom: 0; height: 2px; border-radius: 2px; }
+  .tabs button.on { color: var(--gray-12); }
+  .tabs button.on::after { background: var(--accent-9); }
+  .tab-panels { display: grid; }
+  .tab-panels > .panel { grid-area: 1 / 1; display: flex; flex-direction: column; gap: 16px; visibility: hidden; }
+  .tab-panels > .panel.on { visibility: visible; }
   .divider { height: 1px; background: var(--line); }
   @keyframes vc-pop { from { transform: translateY(8px) scale(.97); opacity: 0; } }
 
@@ -408,7 +423,6 @@
         <button class="primary" id="exportBtn" style="flex:1" disabled>크롭 내보내기</button>
         <button id="cancelBtn" style="display:none">취소</button>
       </div>
-      <details id="cmdBox" style="display:none"><summary>ffmpeg 명령어</summary><code id="cmd"></code></details>
       <button class="app-foot" data-about title="앱 정보"><span class="foot-text">Reframe</span><span class="i">ⓘ</span></button>
     </div>
   </div>
@@ -472,6 +486,33 @@
         </label>
       </div>
 
+      <div class="tabs" role="tablist" id="dlgTabs">
+        <button role="tab" data-tab="size" id="sizeTab">크기</button>
+        <button role="tab" data-tab="enc" id="encTab">화질</button>
+        <button role="tab" data-tab="save">저장</button>
+      </div>
+      <div class="tab-panels">
+      <!-- 출력 크기: 잘라 낸 결과를 가로/세로 한 변 기준으로 키우거나 줄인다 (나머지 변은 비율대로) -->
+      <div class="panel" role="tabpanel" data-tab="size">
+        <div>
+        <div class="field-head"><span>출력 크기</span><span id="sizeSum"></span></div>
+        <div class="seg" id="sizeMode">
+          <button data-v="crop">크롭 그대로</button>
+          <button data-v="w">가로 기준</button>
+          <button data-v="h">세로 기준</button>
+        </div>
+        <div class="size-edit" id="sizeEdit">
+          <span id="sizeAxis">가로</span>
+          <input type="number" id="sizeVal" min="2" max="8192" step="2">
+          <span>px</span>
+          <span id="sizeOther"></span>
+        </div>
+        <div class="presets" id="sizePresets"></div>
+        <p class="muted" id="upNote"></p>
+        </div>
+      </div>
+
+      <div class="panel" role="tabpanel" data-tab="enc">
       <div class="opts" id="mp4Opts">
         <div class="row">
           <label>코덱
@@ -520,8 +561,9 @@
         </div>
         <p class="muted" style="margin:0">프레임 수와 크기가 작을수록 용량이 줄어듭니다.</p>
       </div>
+      </div>
 
-      <div class="divider"></div>
+      <div class="panel" role="tabpanel" data-tab="save">
       <div class="row">
         <label>파일 이름
           <div class="row"><input type="text" id="outName" spellcheck="false" placeholder="파일 이름" disabled><span class="muted" id="extLabel">.mp4</span></div>
@@ -533,7 +575,10 @@
         </label>
       </div>
       <label class="check" title="저장 위치 아래 Output 폴더에 저장합니다. 폴더가 없으면 만듭니다."><input type="checkbox" id="useSub">Output 폴더에 저장</label>
-      <p class="warn" id="sameWarn" style="display:none">원본과 같은 파일입니다. 저장 위치나 이름을 바꿔주세요.</p>
+      </div>
+      </div>
+      <!-- 어느 탭에 있든 보이도록 탭 밖에 둔다 -->
+      <p class="warn" id="sameWarn" style="display:none">원본과 같은 파일입니다. 저장 탭에서 위치나 이름을 바꿔주세요.</p>
     </div>
     <div class="modal-foot">
       <button id="dlgCancel">취소</button>
@@ -565,6 +610,7 @@ const st = {
   info: null,           // { width, height, duration, ... }
   crop: { x: 0, y: 0, w: 0, h: 0 },
   ratioKey: 'free',
+  size: { m: 'crop', v: 0 }, // 출력 크기 (내보내기 창을 열 때 형식별 설정을 불러온다)
   audio: 'auto',
   stillMode: false,     // WebView 가 재생 못 하는 코덱이면 ffmpeg 프레임 미리보기
   frameUrl: '',
@@ -1003,7 +1049,6 @@ function closeVideo() {
   for (const id of ['sum-info', 'sum-crop']) $(id).textContent = '';
   $('status').textContent = ''; $('status').className = 'status';
   $('bar').style.display = 'none';
-  $('cmdBox').style.display = 'none';
   post({ cmd: 'close' });
 }
 $('closeBtn').onclick = closeVideo;
@@ -1151,7 +1196,7 @@ window.addEventListener('resize', () => closeList());
 // ---- 내보내기 대화상자 ----
 const dlgOpen = () => $('exportDlg').classList.contains('on');
 const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} return null; };
-// GIF 크기: 크롭 크기를 그대로 쓰거나 가로를 줄인다 (크롭보다 큰 값은 확대가 되므로 뺀다)
+// GIF 크기: 크롭 크기를 그대로 쓰거나 가로를 줄인다 (용량을 줄이는 용도라 키우지는 않는다)
 const GIF_WIDTHS = [720, 540, 480, 360, 240];
 function gifSize() {
   const r = rounded(), gw = +$('gifWidth').value;
@@ -1165,20 +1210,124 @@ function buildGifWidths() {
     GIF_WIDTHS.filter(w => w < r.w).map(w => `<option value="${w}">${w}px</option>`).join('');
   sel.value = [...sel.options].some(o => o.value === prev) ? prev : '0';
 }
+
+// ---- MP4 출력 크기: 크롭 그대로(crop) 또는 가로(w)/세로(h) 한 변을 정하고 나머지는 비율대로. 키우는 것도 된다 ----
+// 빠른 선택: 짧은 변 720p·1080p·1440p·4K
+const SIZE_PRESETS = [720, 1080, 1440, 2160];
+const SIZE_MAX = 8192;
+// { m, v } 를 기억한다. 저장소를 못 쓰는 환경에서도 앱을 켜 둔 동안은 유지되게 메모리에도 둔다
+let sizeMem = null;
+function loadSize() {
+  if (sizeMem) return sizeMem;
+  try { const s = JSON.parse(pref('vc.size.mp4')); if (s && ['crop', 'w', 'h'].includes(s.m)) return s; } catch {}
+  return { m: 'crop', v: 0 };
+}
+// 반대 변은 고른 비율(9:16 등)로 계산한다. 반올림된 크롭 크기(608×1080)로 계산하면 1080×1918 처럼 어긋나기 때문.
+// 자유 비율이어도 크롭이 흔한 비율과 0.5% 안쪽으로 같으면 그 비율로 본다
+function outRatio() {
+  const r = rounded(), k = r.w / r.h;
+  return ratio() || RATIOS.filter(d => Array.isArray(d.r)).map(d => d.r[0] / d.r[1]).find(q => Math.abs(k / q - 1) < 0.005) || k;
+}
+function sizeFor(m, v) {
+  const r = rounded();
+  if (m === 'crop' || !(v >= 2)) return { w: r.w, h: r.h };
+  const k = outRatio(), even = (x) => Math.max(2, Math.round(x / 2) * 2);
+  const a = even(Math.min(v, SIZE_MAX));
+  return m === 'w' ? { w: a, h: even(a / k) } : { w: even(a * k), h: a };
+}
+const mp4Size = () => sizeFor(st.size.m, st.size.v);
+const outSize = () => $('fmt').value === 'gif' ? gifSize() : mp4Size();
+function setSize(s) {
+  st.size = sizeMem = s;
+  pref('vc.size.mp4', JSON.stringify(s));
+  updateDialog();
+}
+function buildSizePresets() {
+  const r = rounded();
+  // 짧은 변 쪽을 기준으로 (세로 크롭이면 가로 기준)
+  const m = r.w <= r.h ? 'w' : 'h';
+  const seen = new Set();
+  $('sizePresets').innerHTML = SIZE_PRESETS.map((v) => {
+    const s = sizeFor(m, v), label = `${s.w} × ${s.h}`;
+    if (seen.has(label)) return '';
+    seen.add(label);
+    return `<button data-m="${m}" data-v="${v}" title="${m === 'w' ? '가로' : '세로'} ${v}px 기준">${label}</button>`;
+  }).join('');
+  document.querySelectorAll('#sizePresets button').forEach(b => b.onclick = () => setSize({ m: b.dataset.m, v: +b.dataset.v }));
+}
+function updateSize() {
+  const r = rounded(), s = mp4Size(), m = st.size.m;
+  document.querySelectorAll('#sizeMode button').forEach(b => b.classList.toggle('on', b.dataset.v === m));
+  $('sizeEdit').style.display = m === 'crop' ? 'none' : '';
+  $('sizeAxis').textContent = m === 'w' ? '가로' : '세로';
+  if (document.activeElement !== $('sizeVal')) $('sizeVal').value = m === 'w' ? s.w : s.h;
+  $('sizeOther').textContent = m === 'w' ? `→ 세로 ${s.h}px` : `→ 가로 ${s.w}px`;
+  const scaled = s.w !== r.w || s.h !== r.h;
+  $('sizeSum').textContent = scaled ? `${r.w} × ${r.h} → ${s.w} × ${s.h}` : `${r.w} × ${r.h}`;
+  document.querySelectorAll('#sizePresets button').forEach(b => {
+    const p = sizeFor(b.dataset.m, +b.dataset.v);
+    b.classList.toggle('on', m !== 'crop' && p.w === s.w && p.h === s.h);
+  });
+  const k = s.w / r.w;
+  $('upNote').style.display = k > 1.001 ? '' : 'none';
+  $('upNote').textContent = `원본보다 ${k.toFixed(2)}배 키웁니다. 조금 흐려 보일 수 있습니다.`;
+}
+// 기준을 바꿔도 결과 크기는 그대로 두고, 입력칸에 그 변의 값을 채운다
+document.querySelectorAll('#sizeMode button').forEach(b => b.onclick = () => {
+  const s = mp4Size(), m = b.dataset.v;
+  setSize({ m, v: m === 'w' ? s.w : m === 'h' ? s.h : 0 });
+});
+$('sizeVal').addEventListener('input', () => { const v = +$('sizeVal').value; if (v >= 2) setSize({ ...st.size, v }); });
+// 포커스를 떠나면 실제로 쓰일(짝수 보정된) 값으로 표시
+$('sizeVal').addEventListener('blur', updateSize);
+
+// ---- 내보내기 창 탭 (크기 · 화질/프레임 · 저장). 마지막에 본 탭을 다음에 열 때도 보여 준다 ----
+// 크기 탭은 MP4 에만 있다. GIF 일 때 크기 탭을 보고 있었다면 화면에는 프레임 탭을 보여 준다
+let dlgTab = 'size';
+const visibleTabs = () => [...document.querySelectorAll('#dlgTabs button')].filter(b => b.style.display !== 'none');
+function showTab(t, focus = false) {
+  dlgTab = t;
+  if (t === 'size' && $('fmt').value === 'gif') t = 'enc';
+  document.querySelectorAll('#dlgTabs button').forEach(b => {
+    const on = b.dataset.tab === t;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', on);
+    b.tabIndex = on ? 0 : -1;
+    if (on && focus) b.focus();
+  });
+  document.querySelectorAll('.tab-panels > .panel').forEach(p => p.classList.toggle('on', p.dataset.tab === t));
+}
+document.querySelectorAll('#dlgTabs button').forEach(b => {
+  b.onclick = () => showTab(b.dataset.tab);
+  // ← → 로 탭 이동
+  b.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const tabs = visibleTabs(), i = tabs.indexOf(b);
+    showTab(tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length].dataset.tab, true);
+  });
+});
+
 function updateDialog() {
   const gif = $('fmt').value === 'gif';
   $('mp4Opts').classList.toggle('on', !gif);
   $('gifOpts').classList.toggle('on', gif);
+  $('encTab').textContent = gif ? '프레임' : '화질';
+  $('sizeTab').style.display = gif ? 'none' : '';
+  showTab(dlgTab);
   $('extLabel').textContent = '.' + $('fmt').value;
-  const r = rounded(), s = gif ? gifSize() : r;
+  updateSize();
+  const s = outSize();
   const fps = document.querySelector('#gifFps button.on').dataset.v;
-  $('dlgSize').textContent = gif ? `${s.w} × ${s.h} · ${fps}fps` : `${r.w} × ${r.h}`;
+  $('dlgSize').textContent = gif ? `${s.w} × ${s.h} · ${fps}fps` : `${s.w} × ${s.h}`;
   refreshSelects();
   checkSame();
 }
 function openExport() {
   if (!st.info || st.exporting) return;
   video.pause();
+  st.size = loadSize();
+  buildSizePresets();
   buildGifWidths();
   updateDialog();
   $('exportDlg').classList.add('on');
@@ -1188,14 +1337,15 @@ function closeExport() { closeList(); $('exportDlg').classList.remove('on'); }
 function startExport() {
   const r = rounded();
   const name = $('outName').value.trim();
-  if (!name) return toast('파일 이름을 입력하세요');
-  if (/[\\/:]/.test(name)) return toast('파일 이름에 / \\ : 는 쓸 수 없습니다');
-  const gw = +$('gifWidth').value;
+  if (!name) { showTab('save'); return toast('파일 이름을 입력하세요'); }
+  if (/[\\/:]/.test(name)) { showTab('save'); return toast('파일 이름에 / \\ : 는 쓸 수 없습니다'); }
+  const s = outSize(), scaled = s.w !== r.w || s.h !== r.h;
   // 같은 이름의 파일이 있으면 Rust 가 confirmOverwrite 로 되묻는다. 그때 이 요청을 overwrite: true 로 다시 보낸다
   st.pendingExport = {
     cmd: 'export', dir: st.outDir, name, subfolder: $('useSub').checked, ...r,
     format: $('fmt').value, codec: $('codec').value, quality: +$('quality').value, audio: st.audio,
-    gif_fps: +document.querySelector('#gifFps button.on').dataset.v, gif_width: gw > 0 ? gw : null,
+    gif_fps: +document.querySelector('#gifFps button.on').dataset.v,
+    out_w: scaled ? s.w : null, out_h: scaled ? s.h : null,
   };
   post(st.pendingExport);
   closeExport();
@@ -1323,7 +1473,6 @@ window.onHost = (m) => {
       st.lastOutput = null;
       $('bar').querySelector('i').style.width = '0%';
       $('status').className = 'status'; $('status').textContent = '내보내는 중… 0%';
-      $('cmd').textContent = m.command; $('cmdBox').style.display = '';
       break;
     case 'progress':
       $('bar').querySelector('i').style.width = (m.value * 100).toFixed(1) + '%';
