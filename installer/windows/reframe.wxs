@@ -36,8 +36,10 @@
 
     <Feature Id="Main">
       <Component Directory="INSTALLFOLDER">
+        <!-- 광고형(Advertise) 바로 가기는 대상이 exe 가 아니라 Installer 폴더라 Windows 검색에 잘 안 잡힌다. exe 를 직접 가리키게 둔다 -->
         <File Id="ReframeExe" Source="$(var.SourceDir)\Reframe.exe" KeyPath="yes">
-          <Shortcut Name="Reframe" Directory="ProgramMenuFolder" WorkingDirectory="INSTALLFOLDER" Icon="ReframeIcon" Advertise="yes" />
+          <Shortcut Id="ReframeShortcut" Name="Reframe" Description="화면 녹화 영상 크롭 · GIF/MP4 내보내기"
+                    Directory="ProgramMenuFolder" WorkingDirectory="INSTALLFOLDER" Icon="ReframeIcon" Advertise="no" />
         </File>
       </Component>
       <Component Directory="INSTALLFOLDER">
